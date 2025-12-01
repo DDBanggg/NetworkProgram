@@ -1,0 +1,45 @@
+Prerequisites
+
+*.d
+
+Compiled Object files
+
+*.o
+*.obj
+
+Precompiled Headers
+
+*.gch
+*.pch
+
+Libraries
+
+*.lib
+*.a
+*.la
+*.lo
+
+Executables (File chạy đầu ra)
+
+*.exe
+*.out
+*.app
+server_app
+client_app
+
+Debug files
+
+*.dSYM/
+*.su
+
+Editors / IDEs
+
+.vscode/
+.idea/
+*.swp
+*~
+*.DS_Store
+
+Logs
+
+*.log
