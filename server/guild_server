@@ -1,0 +1,135 @@
+================================================================================ DEV GUIDE - PROJECT MẠNG MÁY TÍNH (BẢNG TIN ĐIỆN TỬ) GIAI ĐOẠN 1 (SPRINT 1) - DEADLINE: 08/12/2025
+
+CHÚ Ý QUAN TRỌNG (DÀNH CHO CẢ TEAM):
+
+KHÔNG tự ý dùng lệnh send() hoặc recv() của hệ thống.
+Bắt buộc dùng bộ hàm trong "common/NetworkUtils.h" để tránh lỗi dính gói tin (Sticky Packet).
+
+KHÔNG sửa file "common/protocol.h". Đây là file giao thức chuẩn.
+
+Code xong phải chạy được lệnh "make" không báo lỗi mới được push lên Git.
+
+PHẦN 1: HƯỚNG DẪN SỬ DỤNG COMMON LIB (DO CORE TEAM CUNG CẤP)
+
+Các bạn include file header: #include "../common/NetworkUtils.h"
+Và sử dụng 2 hàm static sau cho mọi thao tác gửi/nhận:
+
+Gửi gói tin (Client gửi Request hoặc Server gửi Response):
+bool ret = NetworkUtils::sendPacket(socket, OPCODE, payload_pointer, payload_len);
+-> Trả về true nếu gửi thành công.
+
+Nhận gói tin:
+uint8_t opcode;
+std::vector<uint8_t> payload;
+bool ret = NetworkUtils::recvPacket(socket, opcode, payload);
+-> Hàm này sẽ block (chờ) cho đến khi nhận đủ dữ liệu.
+-> Sau khi nhận xong, opcode chứa mã lệnh, payload chứa dữ liệu.
+
+PHẦN 2: NHIỆM VỤ THÀNH VIÊN SERVER (BACKEND)
+
+Mục tiêu: Server chạy đa luồng, lưu user vào RAM, xử lý Đăng Ký/Đăng Nhập.
+
+A. Cấu trúc dữ liệu (Tạo trong server/ServerHandler.cpp hoặc file riêng):
+
+Cần một Map để lưu user: std::map<std::string, std::string> userDB;
+
+Cần một Mutex để bảo vệ Map: std::mutex dbMutex; (Dùng #include <mutex>)
+
+B. Xử lý Logic (Trong ServerHandler.cpp):
+
+Hàm handleRegister(payload):
+
+B1: Parse Payload. Cấu trúc nhận được từ Client là một chuỗi byte liên tiếp.
+[user_len (4B)][username][pass_len (4B)][password]
+
+B2: Tách user và password từ payload.
+Lưu ý: 4 byte đầu là user_len. Dùng int len = ntohl((int)ptr) để đọc độ dài.
+
+B3: Lock Mutex (dbMutex.lock()).
+
+B4: Kiểm tra user có trong userDB chưa?
+- Nếu chưa: userDB[user] = pass. Trạng thái = REGISTER_OK.
+- Nếu có rồi: Trạng thái = REGISTER_FAIL_EXISTS.
+
+B5: Unlock Mutex (dbMutex.unlock()).
+
+B6: Gửi phản hồi (RES_REGISTER) về Client:
+NetworkUtils::sendPacket(clientSocket, RES_REGISTER, &status, 1);
+
+Hàm handleLogin(payload):
+
+B1: Parse Payload tương tự như Register.
+
+B2: Lock Mutex.
+
+B3: Check userDB.
+- Nếu user tồn tại và pass khớp -> LOGIN_OK.
+- Ngược lại -> LOGIN_FAIL...
+
+B4: Unlock Mutex.
+
+B5: Gửi phản hồi (RES_LOGIN).
+
+PHẦN 3: NHIỆM VỤ THÀNH VIÊN CLIENT (FRONTEND)
+
+Mục tiêu: Hiển thị Menu, Nhập liệu, Gửi gói tin chuẩn format Big Endian.
+
+A. Quy trình Pack dữ liệu (Quan trọng):
+Khi gửi chuỗi (String), phải gửi kèm độ dài phía trước. Độ dài phải chuyển sang Big Endian.
+
+Ví dụ code đóng gói:
+std::string u = "admin";
+std::string p = "123";
+
+  uint32_t uLen = htonl(u.length()); // Chuyển độ dài user sang Big Endian
+  uint32_t pLen = htonl(p.length()); // Chuyển độ dài pass sang Big Endian
+
+  std::vector<uint8_t> payload;
+  // Chèn độ dài user
+  payload.insert(payload.end(), (uint8_t*)&uLen, (uint8_t*)&uLen + 4);
+  // Chèn user
+  payload.insert(payload.end(), u.begin(), u.end());
+  // Chèn độ dài pass
+  payload.insert(payload.end(), (uint8_t*)&pLen, (uint8_t*)&pLen + 4);
+  // Chèn pass
+  payload.insert(payload.end(), p.begin(), p.end());
+
+  // Gửi đi
+  NetworkUtils::sendPacket(sock, REQ_LOGIN, payload.data(), payload.size());
+
+
+B. Xử lý Luồng (Flow):
+
+Connect tới Server.
+
+Hiện Menu:
+cout << "1. Register";
+cout << "2. Login";
+
+Nhận input từ bàn phím (cin >> choice).
+
+Nếu chọn Register:
+
+Nhập user/pass.
+
+Đóng gói (như mục A).
+
+Gửi REQ_REGISTER.
+
+Ngay lập tức gọi recvPacket() để chờ kết quả.
+
+Nếu kết quả == REGISTER_OK -> In "Thành công".
+
+Nếu kết quả == REGISTER_FAIL -> In "Thất bại".
+
+CHECKLIST TRƯỚC KHI DEMO (NGÀY 08/12)
+
+[ ] Server: Chạy được "./server_app", in dòng "Listening on port 8080".
+[ ] Server: Khi có Client kết nối, hiện "New connection".
+[ ] Client: Chạy được "./client_app", kết nối thành công.
+[ ] Client: Đăng ký user "test" -> Báo thành công.
+[ ] Client: Đăng ký lại user "test" -> Báo lỗi (Đã tồn tại).
+[ ] Client: Đăng nhập user "test" -> Báo thành công.
+[ ] Server: Mở 2 terminal Client A và Client B, cả 2 đăng nhập được song song.
+
+HẾT.
