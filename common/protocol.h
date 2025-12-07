@@ -1,11 +1,10 @@
-// FILE: common/protocol.h
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
 #include <cstdint>
 
 // ====================================================
-// 1. CẤU TRÚC GÓI TIN (PACKET STRUCTURE) [cite: 23, 24]
+// 1. CẤU TRÚC GÓI TIN (PACKET STRUCTURE) 
 // ====================================================
 // Sử dụng #pragma pack(1) để đảm bảo không có padding byte,
 // giúp kích thước struct chính xác là 5 bytes khi gửi qua mạng.
@@ -17,17 +16,17 @@ struct MessageHeader {
 #pragma pack(pop)
 
 // ====================================================
-// 2. BẢNG MÃ LỆNH (OPCODE) [cite: 76]
+// 2. BẢNG MÃ LỆNH (OPCODE) 
 // ====================================================
 enum OpCode : uint8_t {
-    // A. Nhóm Quản lý Tài khoản (Account) [cite: 30, 31]
+    // A. Nhóm Quản lý Tài khoản (Account) 
     REQ_REGISTER        = 1,
     RES_REGISTER        = 2,
     REQ_LOGIN           = 3,
     RES_LOGIN           = 4,
     REQ_LOGOUT          = 5,
 
-    // B. Nhóm Quản lý Topic (Producer) [cite: 32, 33]
+    // B. Nhóm Quản lý Topic (Producer) 
     REQ_GET_ALL_TOPICS  = 6,
     RES_GET_ALL_TOPICS  = 7,
     REQ_CREATE_TOPIC    = 8,
@@ -38,7 +37,7 @@ enum OpCode : uint8_t {
     RES_GET_MY_TOPICS   = 13,
     NOTIFY_TOPIC_EVENT  = 14, // Broadcast: Có topic mới/xóa
 
-    // C. Nhóm Tra cứu & Theo dõi (Consumer) [cite: 34, 35]
+    // C. Nhóm Tra cứu & Theo dõi (Consumer) 
     REQ_TOPIC_INFO      = 15,
     RES_TOPIC_INFO      = 16,
     REQ_TOPIC_SUBS      = 17, // Xem ai đang sub topic này
@@ -50,7 +49,7 @@ enum OpCode : uint8_t {
     REQ_MY_SUBS         = 23, // Xem mình đang sub gì
     RES_MY_SUBS         = 24,
 
-    // D. Nhóm Tin nhắn & Dữ liệu (Data) [cite: 36, 37]
+    // D. Nhóm Tin nhắn & Dữ liệu (Data) 
     REQ_PUBLISH_TEXT    = 25,
     REQ_PUBLISH_BIN     = 26, // Gửi ảnh/âm thanh
     RES_PUBLISH         = 27, // Server xác nhận đã nhận tin
@@ -63,7 +62,7 @@ enum OpCode : uint8_t {
 };
 
 // ====================================================
-// 3. MÃ TRẠNG THÁI (STATUS CODE) [cite: 76]
+// 3. MÃ TRẠNG THÁI (STATUS CODE)
 // ====================================================
 // Dùng cho payload của các gói RES_...
 enum StatusCode : uint8_t {
@@ -100,7 +99,7 @@ enum StatusCode : uint8_t {
 };
 
 // ====================================================
-// 4. CONSTANTS [cite: 27, 28]
+// 4. CONSTANTS 
 // ====================================================
 // Định nghĩa các hằng số kích thước nếu cần
 #define HEADER_SIZE sizeof(MessageHeader) // 5 bytes
