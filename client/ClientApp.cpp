@@ -1,42 +1,3 @@
-/*#include <iostream>
-#include <string>
-#include <thread>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include "../common/NetworkUtils.h"
-#include "../common/DataUtils.h"
-#include "../common/protocol.h"
-
-using namespace std;
-
-// Hàm hỗ trợ gửi yêu cầu đăng ký
-void doRegister(int sock) {
-    string user, pass;
-    cout << "Nhap Username: "; cin >> user;
-    cout << "Nhap Password: "; cin >> pass;
-
-    // TODO: Đóng gói dữ liệu
-    // std::vector<uint8_t> payload = DataUtils::packString(user);
-    // std::vector<uint8_t> passBytes = DataUtils::packString(pass);
-    // payload.insert(payload.end(), passBytes.begin(), passBytes.end());
-
-    // TODO: Gửi đi dùng NetworkUtils::sendPacket(sock, REQ_REGISTER, ...)
-    // TODO: Nhận phản hồi ngay lập tức
-}
-
-void doLogin(int sock) {
-    // TODO: Làm tương tự doRegister
-}
-
-int main() {
-    // TODO: Kết nối socket tới 127.0.0.1 port 8080
-    // TODO: Hiện menu switch case
-    return 0;
-}*/
-
-
-
 // client/ClientApp.cpp
 #include <iostream>
 #include <string>
@@ -45,7 +6,7 @@ int main() {
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
-#include "ClientHandler.h" // Include handler vừa tạo
+#include "ClientHandler.h"
 
 using namespace std;
 
@@ -57,7 +18,21 @@ void showMenu() {
     cout << "Nhap lua chon: ";
 }
 
-int main() {
+int main(int argc, char const *argv[]) {
+    // --- CẤU HÌNH SERVER ---
+    // Bạn có thể sửa IP và Port tại đây
+    string serverIP = "172.23.232.109"; 
+    int serverPort = 8080;
+
+    // (Nâng cao: Nếu muốn nhập từ dòng lệnh thì bỏ comment đoạn dưới)
+    /*
+    if (argc >= 3) {
+        serverIP = argv[1];
+        serverPort = stoi(argv[2]);
+    }
+    */
+    // -----------------------
+
     // 1. Kết nối tới Server
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
@@ -67,15 +42,19 @@ int main() {
 
     struct sockaddr_in serv_addr;
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(8080); // Port mặc định theo tài liệu
+    
+    // SỬ DỤNG BIẾN serverPort
+    serv_addr.sin_port = htons(serverPort); 
 
-    // Chuyển đổi IP (Giả sử chạy localhost)
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+    // Chuyển đổi IP: SỬ DỤNG BIẾN serverIP
+    // Lưu ý: inet_pton cần tham số là char*, nên phải dùng .c_str()
+    if (inet_pton(AF_INET, serverIP.c_str(), &serv_addr.sin_addr) <= 0) {
         cerr << "Invalid address/ Address not supported" << endl;
         return -1;
     }
 
-    cout << "Connecting to server 127.0.0.1:8080..." << endl;
+    cout << "Connecting to server " << serverIP << ":" << serverPort << "..." << endl;
+    
     if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
         cerr << "Connection Failed. Is server running?" << endl;
         return -1;
@@ -90,10 +69,15 @@ int main() {
     while (isRunning) {
         showMenu();
         int choice;
-        cin >> choice;
+        // Kiểm tra xem người dùng có nhập phải chữ cái gây lỗi lặp vô hạn không
+        if (!(cin >> choice)) {
+             cout << "Vui long nhap so!" << endl;
+             cin.clear(); 
+             cin.ignore(10000, '\n');
+             continue;
+        }
 
-        // Xóa bộ đệm bàn phím để tránh lỗi trôi lệnh khi nhập chuỗi sau này
-        cin.ignore(); 
+        cin.ignore(); // Xóa bộ đệm
 
         string u, p;
         switch (choice) {
