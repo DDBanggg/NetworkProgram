@@ -11,7 +11,7 @@ SERVER_BIN = server_app
 COMMON_SRC = common/NetworkUtils.cpp
 
 # Client: File main của client + Common
-CLIENT_SRC = client/ClientApp.cpp $(COMMON_SRC)
+CLIENT_SRC = client/ClientApp.cpp client/ClientHandler.cpp $(COMMON_SRC)
 
 # Server: File main của server + Handler + Common
 # Lưu ý: Bạn cần có file server/ServerApp.cpp chứa hàm main()

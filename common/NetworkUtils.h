@@ -1,6 +1,6 @@
 #ifndef NETWORK_UTILS_H
 #define NETWORK_UTILS_H
-
+#include "protocol.h"
 #include <vector>
 #include <cstdint>
 #include <cstddef> // Cho size_t
