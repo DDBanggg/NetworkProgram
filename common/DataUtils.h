@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 #include <cstring>
-#include <arpa/inet.h> // Cho htonl, ntohl
+#include <arpa/inet.h> 
 
 class DataUtils {
 public:
@@ -45,7 +45,7 @@ public:
         uint32_t len = ntohl(netLen);
         offset += 4;
 
-        if (offset + len > buffer.size()) return ""; // Không đủ byte dữ liệu
+        if (offset + len > buffer.size()) return ""; 
 
         // 2. Đọc chuỗi
         std::string str(buffer.begin() + offset, buffer.begin() + offset + len);
@@ -54,11 +54,10 @@ public:
         return str;
     }
 
-    // [MỚI - SPRINT 2] Hỗ trợ giải nén số nguyên từ buffer
+    // Hỗ trợ giải nén số nguyên từ buffer
     // Đọc 4 bytes tại vị trí offset, chuyển từ Big Endian về int máy, và tăng offset thêm 4
     static uint32_t unpackInt(const std::vector<uint8_t>& buffer, size_t& offset) {
-        if (offset + 4 > buffer.size()) return 0; // Lỗi: Không đủ dữ liệu
-
+        if (offset + 4 > buffer.size()) return 0; 
         uint32_t netValue;
         std::memcpy(&netValue, &buffer[offset], 4);
         uint32_t value = ntohl(netValue); // Chuyển từ Big Endian về Host

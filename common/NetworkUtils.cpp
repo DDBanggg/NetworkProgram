@@ -1,11 +1,10 @@
 #include "NetworkUtils.h"
-// Include file định nghĩa gói tin để dùng struct MessageHeader
 #include "protocol.h" 
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <cstring> // Cho memcpy
+#include <cstring> 
 #include <iostream>
 #include <vector>
 
@@ -42,7 +41,6 @@ bool NetworkUtils::sendPacket(int socket, uint8_t opcode, const void* payload, u
     header.payloadLen = htonl(payloadLen); // Chuyển sang Big Endian
 
     // 2. Gửi Header (5 bytes)
-    // sizeof(header) lúc này chắc chắn là 5 vì trong protocol.h đã có #pragma pack(1)
     if (!sendAll(socket, &header, sizeof(header))) return false;
 
     // 3. Gửi Payload (nếu có)
@@ -54,11 +52,11 @@ bool NetworkUtils::sendPacket(int socket, uint8_t opcode, const void* payload, u
 
 bool NetworkUtils::recvPacket(int socket, uint8_t& outOpcode, std::vector<uint8_t>& outPayload) {
     // 1. Nhận Header
-    // Kỹ thuật an toàn: Nhận vào buffer tạm trước
+    // Nhận vào buffer tạm trước
     uint8_t headerBuf[sizeof(MessageHeader)]; 
     if (!recvAll(socket, headerBuf, sizeof(MessageHeader))) return false;
 
-    // 2. Parse Header an toàn bằng memcpy (Tránh lỗi Alignment trên CPU khác)
+    // 2. Parse Header an toàn bằng memcpy 
     MessageHeader header;
     std::memcpy(&header, headerBuf, sizeof(MessageHeader));
 
@@ -68,8 +66,7 @@ bool NetworkUtils::recvPacket(int socket, uint8_t& outOpcode, std::vector<uint8_
     // 3. Nhận Payload
     outPayload.clear();
     if (len > 0) {
-        // [BẢO MẬT] Kiểm tra kích thước gói tin tối đa để tránh bị tấn công tràn RAM
-        // Ví dụ: Không nhận gói tin lớn hơn 10MB
+        // Kiểm tra kích thước gói tin tối đa để tránh bị tấn công tràn RAM (10 MB)
         if (len > 10 * 1024 * 1024) {
             std::cerr << "Error: Packet too large (" << len << " bytes)" << std::endl;
             return false;
