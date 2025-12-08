@@ -19,7 +19,7 @@ public:
     bool requestRegister(const std::string& username, const std::string& password);
     bool requestLogin(const std::string& username, const std::string& password);
 
-    // Sprint 2: Sau này sẽ thêm các hàm như joinTopic, sendMessage ở đây
+    // Nghiệp vụ Sprint 2: Tạo và xóa topic
     bool requestCreateTopic(std::string topicName);
     bool requestDeleteTopic(std::string topicName);
     void requestGetList(bool isMyTopic); // isMyTopic = true (Của tôi), false (Tất cả)

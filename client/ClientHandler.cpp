@@ -57,7 +57,7 @@ bool ClientHandler::requestRegister(const string& username, const string& passwo
 }
 
 bool ClientHandler::requestLogin(const string& username, const string& password) {
-    // 1. Đóng gói Payload (Giống hệt Register) [cite: 160]
+    // 1. Đóng gói Payload 
     vector<uint8_t> payload = DataUtils::packString(username);
     vector<uint8_t> passBytes = DataUtils::packString(password);
     payload.insert(payload.end(), passBytes.begin(), passBytes.end());
@@ -124,7 +124,7 @@ bool ClientHandler::requestCreateTopic(string topicName) {
 
 // 2. Hàm Xóa Topic
 bool ClientHandler::requestDeleteTopic(string topicName) {
-    // Logic tương tự tạo topic (Đóng gói tên -> Gửi -> Chờ KQ)
+
     vector<uint8_t> payload = DataUtils::packString(topicName);
 
     if (!NetworkUtils::sendPacket(serverSocket, REQ_DELETE_TOPIC, payload.data(), payload.size())) {
@@ -184,7 +184,6 @@ void ClientHandler::requestGetList(bool isMyTopic) {
         cout << "----------------------------------------" << endl;
         
         // 4. Loop để đọc từng Topic
-        // Cấu trúc response: [Count] + List { [NameLen][Name][CreatorLen][Creator] }
         for (uint32_t i = 0; i < count; ++i) {
             string name = DataUtils::unpackString(res, offset);
             string creator = DataUtils::unpackString(res, offset);
