@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <signal.h>
 #include "ServerHandler.h"
 
 using namespace std;
@@ -19,6 +20,8 @@ void connectionHandler(int clientSock) {
 }
 
 int main() {
+    signal(SIGPIPE, SIG_IGN);
+
     int serverSocket, newSocket;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
@@ -50,7 +53,7 @@ int main() {
         return -1;
     }
 
-    cout << "Server (Truong Anh) dang lang nghe tai port " << PORT << "...\n";
+    cout << "Truong Anh dang lang nghe tai port " << PORT << "...\n";
 
     // 5. Vòng lặp chấp nhận kết nối
     while (true) {
