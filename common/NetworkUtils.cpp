@@ -1,9 +1,13 @@
 #include "NetworkUtils.h"
+// Include file định nghĩa gói tin để dùng struct MessageHeader
+#include "protocol.h" 
+
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <cstring>
+#include <cstring> // Cho memcpy
 #include <iostream>
+#include <vector>
 
 bool NetworkUtils::sendAll(int socket, const void* data, size_t len) {
     const char* ptr = static_cast<const char*>(data);
@@ -28,14 +32,20 @@ bool NetworkUtils::recvAll(int socket, void* buffer, size_t len) {
 }
 
 bool NetworkUtils::sendPacket(int socket, uint8_t opcode, const void* payload, uint32_t payloadLen) {
+    // 1. Chuẩn bị Header
     MessageHeader header;
+    
+    // Xóa sạch bộ nhớ của header để tránh rác (Best Practice)
+    std::memset(&header, 0, sizeof(header)); 
+    
     header.opcode = opcode;
-    header.payloadLen = htonl(payloadLen);
+    header.payloadLen = htonl(payloadLen); // Chuyển sang Big Endian
 
-    // Gửi Header
+    // 2. Gửi Header (5 bytes)
+    // sizeof(header) lúc này chắc chắn là 5 vì trong protocol.h đã có #pragma pack(1)
     if (!sendAll(socket, &header, sizeof(header))) return false;
 
-    // Gửi Payload (nếu có)
+    // 3. Gửi Payload (nếu có)
     if (payloadLen > 0 && payload != nullptr) {
         if (!sendAll(socket, payload, payloadLen)) return false;
     }
@@ -43,15 +53,30 @@ bool NetworkUtils::sendPacket(int socket, uint8_t opcode, const void* payload, u
 }
 
 bool NetworkUtils::recvPacket(int socket, uint8_t& outOpcode, std::vector<uint8_t>& outPayload) {
+    // 1. Nhận Header
+    // Kỹ thuật an toàn: Nhận vào buffer tạm trước
+    uint8_t headerBuf[sizeof(MessageHeader)]; 
+    if (!recvAll(socket, headerBuf, sizeof(MessageHeader))) return false;
+
+    // 2. Parse Header an toàn bằng memcpy (Tránh lỗi Alignment trên CPU khác)
     MessageHeader header;
-    if (!recvAll(socket, &header, sizeof(header))) return false;
+    std::memcpy(&header, headerBuf, sizeof(MessageHeader));
 
     outOpcode = header.opcode;
-    uint32_t len = ntohl(header.payloadLen);
+    uint32_t len = ntohl(header.payloadLen); // Chuyển từ Big Endian về máy
 
+    // 3. Nhận Payload
     outPayload.clear();
     if (len > 0) {
+        // [BẢO MẬT] Kiểm tra kích thước gói tin tối đa để tránh bị tấn công tràn RAM
+        // Ví dụ: Không nhận gói tin lớn hơn 10MB
+        if (len > 10 * 1024 * 1024) {
+            std::cerr << "Error: Packet too large (" << len << " bytes)" << std::endl;
+            return false;
+        }
+
         outPayload.resize(len);
+        // Nhận dữ liệu thẳng vào vector
         if (!recvAll(socket, outPayload.data(), len)) return false;
     }
     return true;
