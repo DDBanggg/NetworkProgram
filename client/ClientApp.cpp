@@ -1,4 +1,4 @@
-// client/ClientApp.cpp
+
 #include <iostream>
 #include <string>
 #include <thread>
@@ -19,19 +19,9 @@ void showMenu() {
 }
 
 int main(int argc, char const *argv[]) {
-    // --- CẤU HÌNH SERVER ---
-    // Bạn có thể sửa IP và Port tại đây
-    string serverIP = "172.23.232.109"; 
+    //CẤU HÌNH SERVER
+    string serverIP = "172.18.36.83"; 
     int serverPort = 8080;
-
-    // (Nâng cao: Nếu muốn nhập từ dòng lệnh thì bỏ comment đoạn dưới)
-    /*
-    if (argc >= 3) {
-        serverIP = argv[1];
-        serverPort = stoi(argv[2]);
-    }
-    */
-    // -----------------------
 
     // 1. Kết nối tới Server
     int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -92,7 +82,56 @@ int main(int argc, char const *argv[]) {
                 cout << "--- DANG NHAP ---" << endl;
                 cout << "Username: "; getline(cin, u);
                 cout << "Password: "; getline(cin, p);
-                handler.requestLogin(u, p);
+                
+                // --- BẮT ĐẦU MENU SPRINT 2 ---
+                if (handler.requestLogin(u, p)) {
+                    bool loggedIn = true;
+                    while (loggedIn) {
+                        cout << "\n=== DASHBOARD MENU (" << u << ") ===" << endl;
+                        cout << "1. Xem tat ca Topic" << endl;
+                        cout << "2. Tao Topic moi" << endl;
+                        cout << "3. Topic cua toi" << endl;
+                        cout << "4. Xoa Topic" << endl;
+                        cout << "5. Dang xuat" << endl;
+                        cout << "Lua chon: ";
+
+                        int subChoice;
+                        if (!(cin >> subChoice)) {
+                            cin.clear(); cin.ignore(10000, '\n');
+                            continue;
+                        }
+                        cin.ignore(); // Xóa bộ đệm
+
+                        string buf;
+                        switch (subChoice) {
+                            case 1:
+                                handler.requestGetList(false); // Get All
+                                break;
+                            case 2:
+                                cout << "Nhap ten Topic moi: "; getline(cin, buf);
+                                if (handler.requestCreateTopic(buf)) {
+                                    cout << ">> Tao Topic thanh cong!" << endl;
+                                }
+                                break;
+                            case 3:
+                                handler.requestGetList(true); // Get My Topics
+                                break;
+                            case 4:
+                                cout << "Nhap ten Topic can xoa: "; getline(cin, buf);
+                                if (handler.requestDeleteTopic(buf)) {
+                                    cout << ">> Xoa thanh cong!" << endl;
+                                }
+                                break;
+                            case 5:
+                                loggedIn = false;
+                                cout << ">> Dang xuat thanh cong." << endl;
+                                break;
+                            default:
+                                cout << "Lua chon khong hop le." << endl;
+                        }
+                    }
+                }
+                // --- KẾT THÚC MENU SPRINT 2 ---
                 break;
 
             case 3: // Thoát

@@ -4,7 +4,7 @@
 #include "../common/DataUtils.h"
 #include "../common/protocol.h"
 #include <iostream>
-
+#include <cstring>
 using namespace std;
 
 ClientHandler::ClientHandler(int socket) : serverSocket(socket) {}
@@ -92,6 +92,106 @@ bool ClientHandler::requestLogin(const string& username, const string& password)
             return false;
         }
     }
+    }
 
+    // 1. Hàm Tạo Topic
+bool ClientHandler::requestCreateTopic(string topicName) {
+    // Đóng gói tên topic
+    vector<uint8_t> payload = DataUtils::packString(topicName);
+    
+    // Gửi REQ_CREATE_TOPIC
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_CREATE_TOPIC, payload.data(), payload.size())) {
+        return false;
+    }
+
+    // Chờ phản hồi
+    uint8_t op; 
+    vector<uint8_t> res;
+    if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
+
+    // Xử lý kết quả
+    if (op == RES_CREATE_TOPIC && !res.empty()) {
+        uint8_t status = res[0];
+        if (status == TOPIC_CREATE_OK) return true;
+        if (status == TOPIC_FAIL_EXISTS) {
+            cout << ">> Loi: Ten Topic da ton tai!" << endl;
+        } else {
+            cout << ">> Loi tao topic (Status code: " << (int)status << ")" << endl;
+        }
+    }
     return false;
 }
+
+// 2. Hàm Xóa Topic
+bool ClientHandler::requestDeleteTopic(string topicName) {
+    // Logic tương tự tạo topic (Đóng gói tên -> Gửi -> Chờ KQ)
+    vector<uint8_t> payload = DataUtils::packString(topicName);
+
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_DELETE_TOPIC, payload.data(), payload.size())) {
+        return false;
+    }
+
+    uint8_t op; 
+    vector<uint8_t> res;
+    if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
+
+    if (op == RES_DELETE_TOPIC && !res.empty()) {
+        uint8_t status = res[0];
+        if (status == TOPIC_DELETE_OK) return true;
+        
+        // Xử lý các mã lỗi đặc thù
+        if (status == TOPIC_FAIL_DENIED) {
+            cout << ">> BAN KHONG PHAI CHU TOPIC NAY NEN KHONG THE XOA!" << endl;
+        } else if (status == TOPIC_FAIL_NOT_FOUND) {
+            cout << ">> Loi: Khong tim thay Topic nay." << endl;
+        } else {
+            cout << ">> Loi xoa topic khac." << endl;
+        }
+    }
+    return false;
+}
+
+// 3. Hàm Lấy Danh Sách (Chung cho cả All và My)
+void ClientHandler::requestGetList(bool isMyTopic) {
+    uint8_t reqOp = isMyTopic ? REQ_GET_MY_TOPICS : REQ_GET_ALL_TOPICS;
+    uint8_t resOp = isMyTopic ? RES_GET_MY_TOPICS : RES_GET_ALL_TOPICS;
+
+    // 1. Gửi Request rỗng (Payload size = 0)
+    if (!NetworkUtils::sendPacket(serverSocket, reqOp, nullptr, 0)) return;
+
+    // 2. Nhận Response
+    uint8_t op; 
+    vector<uint8_t> res;
+    if (!NetworkUtils::recvPacket(serverSocket, op, res)) return;
+
+    if (op == resOp) {
+        size_t offset = 0;
+        
+        // 3. Parse số lượng (4 byte đầu)
+        if (res.size() < 4) {
+            cout << ">> Danh sach rong hoac loi packet." << endl;
+            return;
+        }
+
+        uint32_t netCount;
+        memcpy(&netCount, &res[offset], 4);
+        uint32_t count = ntohl(netCount); // Chuyển Big Endian -> Little Endian
+        offset += 4;
+
+        cout << "\n----------------------------------------" << endl;
+        if (isMyTopic) cout << " DANH SACH TOPIC CUA TOI (Tong: " << count << ")" << endl;
+        else           cout << " DANH SACH TAT CA TOPIC (Tong: " << count << ")" << endl;
+        cout << "----------------------------------------" << endl;
+        
+        // 4. Loop để đọc từng Topic
+        // Cấu trúc response: [Count] + List { [NameLen][Name][CreatorLen][Creator] }
+        for (uint32_t i = 0; i < count; ++i) {
+            string name = DataUtils::unpackString(res, offset);
+            string creator = DataUtils::unpackString(res, offset);
+            
+            cout << "#" << (i + 1) << ". [" << name << "] - Chu thot: " << creator << endl;
+        }
+        cout << "----------------------------------------" << endl;
+    }
+}
+    

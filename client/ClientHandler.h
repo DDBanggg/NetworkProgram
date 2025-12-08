@@ -1,4 +1,4 @@
-// client/ClientHandler.h
+
 #ifndef CLIENT_HANDLER_H
 #define CLIENT_HANDLER_H
 
@@ -20,6 +20,9 @@ public:
     bool requestLogin(const std::string& username, const std::string& password);
 
     // Sprint 2: Sau này sẽ thêm các hàm như joinTopic, sendMessage ở đây
+    bool requestCreateTopic(std::string topicName);
+    bool requestDeleteTopic(std::string topicName);
+    void requestGetList(bool isMyTopic); // isMyTopic = true (Của tôi), false (Tất cả)
 };
 
 #endif // CLIENT_HANDLER_H
