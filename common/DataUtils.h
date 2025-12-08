@@ -53,6 +53,19 @@ public:
 
         return str;
     }
+
+    // [MỚI - SPRINT 2] Hỗ trợ giải nén số nguyên từ buffer
+    // Đọc 4 bytes tại vị trí offset, chuyển từ Big Endian về int máy, và tăng offset thêm 4
+    static uint32_t unpackInt(const std::vector<uint8_t>& buffer, size_t& offset) {
+        if (offset + 4 > buffer.size()) return 0; // Lỗi: Không đủ dữ liệu
+
+        uint32_t netValue;
+        std::memcpy(&netValue, &buffer[offset], 4);
+        uint32_t value = ntohl(netValue); // Chuyển từ Big Endian về Host
+        offset += 4; // Tự động dời con trỏ đọc
+
+        return value;
+    }
 };
 
 #endif
