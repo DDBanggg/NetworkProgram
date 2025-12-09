@@ -20,7 +20,7 @@ void showMenu() {
 
 int main(int argc, char const *argv[]) {
     //CẤU HÌNH SERVER
-    string serverIP = "172.18.36.83"; 
+    string serverIP = "127.0.0.1"; 
     int serverPort = 8080;
 
     // 1. Kết nối tới Server

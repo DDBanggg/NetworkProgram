@@ -8,6 +8,8 @@
 #include <iostream>
 #include <vector>
 
+using namespace std;
+
 bool NetworkUtils::sendAll(int socket, const void* data, size_t len) {
     const char* ptr = static_cast<const char*>(data);
     size_t totalSent = 0;
@@ -26,7 +28,10 @@ bool NetworkUtils::recvAll(int socket, void* buffer, size_t len) {
         ssize_t received = recv(socket, ptr + totalReceived, len - totalReceived, 0);
         if (received <= 0) return false;
         totalReceived += received;
+        string s(ptr, len);
+        cout << "Received data: " << s << endl;
     }
+
     return true;
 }
 

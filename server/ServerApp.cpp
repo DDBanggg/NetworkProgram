@@ -22,6 +22,8 @@ void connectionHandler(int clientSock) {
 int main() {
     signal(SIGPIPE, SIG_IGN);
 
+    ServerHandler::loadData();
+
     int serverSocket, newSocket;
     struct sockaddr_in address;
     int addrlen = sizeof(address);

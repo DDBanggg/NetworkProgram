@@ -8,6 +8,7 @@
 #include <mutex>
 #include <unistd.h> // Header chuẩn cho close() trên Linux
 #include <fstream> // Thư viện đọc ghi file 
+#include <sstream>
 
 using namespace std;
 
@@ -15,6 +16,7 @@ using namespace std;
 
 // Struct lưu trữ Topic
 struct Topic {
+    uint32_t id;
     string name;
     string creator; // Username người tạo
 };
@@ -25,22 +27,39 @@ static mutex dbMutex; // Khóa bảo vệ tránh Race Condition
 
 static map<string, Topic> topicDB; // TopicName - TopicStruct
 static mutex topicMutex;           // Khóa Topic
+static uint32_t globalTopicIdCounter = 0;
+
+// Hàm tách chuỗi theo ký tự ngăn cách (delimiter)
+vector<string> split(const string& s, char delimiter) {
+    vector<string> tokens;
+    string token;
+    istringstream tokenStream(s);
+    while (getline(tokenStream, token, delimiter)) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
 
 // --- HÀM HỖ TRỢ LƯU FILE (PERSISTENCE) ---
 // Ghi thêm vào cuối file (Append mode)
 void saveUserToFile(const string& u, const string& p) {
-    ofstream f("users.txt", ios::app);
+    // Mở file ở chế độ Append (ios::app) -> Ghi nối đuôi
+    ofstream f("data/users.txt", ios::app);
     if (f.is_open()) { 
-        f << u << " " << p << endl; 
+        f << u << "|" << p << endl; 
         f.close(); 
+    } else {
+        cerr << "[ERROR] Cannot open data/users.txt. Make sure 'data' folder exists!" << endl;
     }
 }
 
-void saveTopicToFile(const string& name, const string& creator) {
-    ofstream f("topics.txt", ios::app);
+void saveTopicToFile(uint32_t id, const string& name, const string& creator) {
+    ofstream f("data/topics.txt", ios::app);
     if (f.is_open()) { 
-        f << name << " " << creator << endl; 
+        f << id << "|" << name << "|" << creator << endl; 
         f.close(); 
+    } else {
+        cerr << "[ERROR] Cannot open data/topics.txt" << endl;
     }
 }
 
@@ -51,6 +70,59 @@ ServerHandler::ServerHandler(int socket) : clientSocket(socket) {
 ServerHandler::~ServerHandler() { 
     close(clientSocket); 
     cout << "Closed connection on socket " << clientSocket << endl;
+}
+
+// --- HÀM LOAD DỮ LIỆU TỪ FILE ---
+void ServerHandler::loadData() {
+    // 1. Load Users
+    ifstream fUsers("data/users.txt");
+    if (fUsers.is_open()) {
+        string line;
+        int count = 0;
+        while (getline(fUsers, line)) {
+            // Tách chuỗi bằng dấu |
+            vector<string> parts = split(line, '|');
+            if (parts.size() >= 2) {
+                string u = parts[0];
+                string p = parts[1];
+                userDB[u] = p;
+                count++;
+            }
+        }
+        fUsers.close();
+        cout << "[SYSTEM] Loaded " << count << " users from data/users.txt" << endl;
+    } else {
+        cout << "[WARNING] data/users.txt not found. Starting with empty User DB." << endl;
+    }
+
+    // 2. Load Topics (data/topics.txt)
+    ifstream fTopics("data/topics.txt");
+    if (fTopics.is_open()) {
+        string line;
+        int count = 0;
+        while (getline(fTopics, line)) {
+            // Format: id|name|creator
+            vector<string> parts = split(line, '|');
+            if (parts.size() >= 3) {
+                Topic t;
+                t.id = stoi(parts[0]); // Chuyển chuỗi sang số
+                t.name = parts[1];
+                t.creator = parts[2];
+                
+                topicDB[t.name] = t;
+                
+                // Cập nhật ID lớn nhất để không bị trùng khi tạo mới
+                if (t.id > globalTopicIdCounter) {
+                    globalTopicIdCounter = t.id;
+                }
+                count++;
+            }
+        }
+        fTopics.close();
+        cout << "[SYSTEM] Loaded " << count << " topics. Max ID: " << globalTopicIdCounter << endl;
+    } else {
+        cout << "[WARNING] data/topics.txt not found. Starting with empty Topic DB." << endl;
+    }
 }
 
 void ServerHandler::run() {
@@ -65,6 +137,9 @@ void ServerHandler::run() {
             cout << "Client disconnected or error on socket " << clientSocket << endl;
             break; 
         }
+
+        string s(payload.begin(),payload.end());
+        cout << s << endl;
 
         // 2. Điều hướng xử lý
         switch (opcode) {
@@ -175,24 +250,35 @@ void ServerHandler::handleCreateTopic(const void* payloadData, uint32_t len) {
     string topicName = DataUtils::unpackString(buffer, offset);
 
     uint8_t status;
+    uint32_t newTopicId = 0;
     {
         lock_guard<mutex> lock(topicMutex);
         if (topicDB.find(topicName) != topicDB.end()) {
             status = TOPIC_FAIL_EXISTS;
         } else {
-            // Tạo mới trong RAM
+            globalTopicIdCounter++;
+            newTopicId = globalTopicIdCounter;
+
             Topic t; 
             t.name = topicName; 
             t.creator = this->currentUser;
             topicDB[topicName] = t;
             
             // Lưu xuống file
-            saveTopicToFile(topicName, this->currentUser);
+            saveTopicToFile(newTopicId, topicName, this->currentUser);
             
             status = TOPIC_CREATE_OK;
-            cout << "[TOPIC] New topic created: " << topicName << " by " << currentUser << endl;
+            cout << "[TOPIC] New topic created: " << topicName << " by " << currentUser << " (ID: " << newTopicId << ")" << endl;
         }
     }
+
+    vector<uint8_t> response;
+    response.push_back(status);
+    if (status == TOPIC_CREATE_OK) {
+        vector<uint8_t> idBytes = DataUtils::packInt(newTopicId);
+        response.insert(response.end(), idBytes.begin(), idBytes.end());
+    }
+
     NetworkUtils::sendPacket(clientSocket, RES_CREATE_TOPIC, &status, 1);
 }
 

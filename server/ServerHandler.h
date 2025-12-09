@@ -13,6 +13,8 @@ public:
     // Hàm chạy chính của luồng (Thread loop)
     void run();
 
+    static void loadData();
+
 private:
     int clientSocket;
 
