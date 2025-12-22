@@ -318,61 +318,56 @@ void ServerHandler::handleDeleteTopic(const void* payloadData, uint32_t len) {
 void ServerHandler::handleGetAllTopics() {
     if (!isLogged) return;
     
-    vector<uint8_t> payload;
+    PacketBuilder builder;
 
-    shared_lock<shared_mutex> lock(topicMutex);
-    
-    // Đếm số lượng topic
-    uint32_t count = topicDB.size(); 
-    
-    // Đóng gói Count (4 byte)
-    vector<uint8_t> countBytes = DataUtils::packInt(count);
-    payload.insert(payload.end(), countBytes.begin(), countBytes.end());
-
-    // Loop và đóng gói từng item
-    for (auto const& [key, val] : topicDB) {
-        vector<uint8_t> nameB = DataUtils::packString(val.name);
-        vector<uint8_t> creatorB = DataUtils::packString(val.creator);
+    {
+        shared_lock<shared_mutex> lock(topicMutex);
         
-        payload.insert(payload.end(), nameB.begin(), nameB.end());
-        payload.insert(payload.end(), creatorB.begin(), creatorB.end());
+        // 1. Đóng gói số lượng Topic (4 bytes)
+        uint32_t count = topicDB.size(); 
+        builder.addInt(count); // PacketBuilder tự xử lý htonl
+
+        // 2. Loop và đóng gói từng item
+        for (auto const& [key, val] : topicDB) {
+            // PacketBuilder tự xử lý độ dài chuỗi + nội dung
+            builder.addString(val.name);
+            builder.addString(val.creator);
+        }
     }
 
-    NetworkUtils::sendPacket(clientSocket, RES_GET_ALL_TOPICS, payload.data(), payload.size());
+    NetworkUtils::sendPacket(clientSocket, RES_GET_ALL_TOPICS, builder.getData(), builder.getSize());
 }
 
 // Lấy Topic của tôi
 void ServerHandler::handleGetMyTopics() {
     if (!isLogged) return;
     
-    vector<uint8_t> payload;
+    PacketBuilder builder;
 
-    shared_lock<shared_mutex> lock(topicMutex);
-    
-    // 1. Lọc trước để đếm số lượng
-    uint32_t count = 0;
-    for (auto const& [key, val] : topicDB) {
-        if (val.creator == this->currentUser) {
-            count++;
+    {
+        shared_lock<shared_mutex> lock(topicMutex);
+        
+        // 1. Lọc trước để đếm số lượng
+        uint32_t count = 0;
+        for (auto const& [key, val] : topicDB) {
+            if (val.creator == this->currentUser) {
+                count++;
+            }
+        }
+        
+        // Đóng gói số lượng
+        builder.addInt(count);
+
+        // 2. Loop lại và đóng gói item
+        for (auto const& [key, val] : topicDB) {
+            if (val.creator == this->currentUser) {
+                builder.addString(val.name);
+                builder.addString(val.creator);
+            }
         }
     }
-    
-    // Đóng gói Count (4 byte)
-    vector<uint8_t> countBytes = DataUtils::packInt(count);
-    payload.insert(payload.end(), countBytes.begin(), countBytes.end());
 
-    // 2. Loop lại và đóng gói item
-    for (auto const& [key, val] : topicDB) {
-        if (val.creator == this->currentUser) {
-            vector<uint8_t> nameB = DataUtils::packString(val.name);
-            vector<uint8_t> creatorB = DataUtils::packString(val.creator);
-            
-            payload.insert(payload.end(), nameB.begin(), nameB.end());
-            payload.insert(payload.end(), creatorB.begin(), creatorB.end());
-        }
-    }
-
-    NetworkUtils::sendPacket(clientSocket, RES_GET_MY_TOPICS, payload.data(), payload.size());
+    NetworkUtils::sendPacket(clientSocket, RES_GET_MY_TOPICS, builder.getData(), builder.getSize());
 }
 
 void ServerHandler::handleSubscribe(const void* payloadData, uint32_t len) {
