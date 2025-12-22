@@ -64,6 +64,14 @@ int main() {
             continue;
         }
 
+        // Cài đặt Timeout 5 phút (300 giây) cho socket này
+        struct timeval tv;
+        tv.tv_sec = 300; 
+        tv.tv_usec = 0;
+        if (setsockopt(newSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv) < 0) {
+            perror("Setsockopt timeout failed");
+        }
+
         cout << "Ket noi moi! Socket ID: " << newSocket << endl;
 
         // 6. Tạo luồng mới cho Client (Detach để chạy ngầm)

@@ -9,6 +9,8 @@
 #include <unistd.h> // Header chuẩn cho close() trên Linux
 #include <fstream> // Thư viện đọc ghi file 
 #include <sstream>
+#include <shared_mutex> 
+#include <set>
 
 using namespace std;
 
@@ -23,11 +25,15 @@ struct Topic {
 
 // Static để giới hạn phạm vi trong file này, giả lập DB toàn cục
 static map<string, string> userDB;
-static mutex dbMutex; // Khóa bảo vệ tránh Race Condition
+static shared_mutex dbMutex; // Khóa bảo vệ tránh Race Condition
 
-static map<string, Topic> topicDB; // TopicName - TopicStruct
-static mutex topicMutex;           // Khóa Topic
+static map<string, Topic> topicDB; 
+static shared_mutex topicMutex; 
 static uint32_t globalTopicIdCounter = 0;
+
+// Map lưu danh sách socket đang subscribe topic: TopicID -> Set<Socket>
+static map<uint32_t, set<int>> topicSubscribers;
+static shared_mutex subMutex; // Bảo vệ map subscribers
 
 // Hàm tách chuỗi theo ký tự ngăn cách (delimiter)
 vector<string> split(const string& s, char delimiter) {
@@ -161,6 +167,15 @@ void ServerHandler::run() {
             case REQ_GET_MY_TOPICS:
                 handleGetMyTopics();
                 break;
+            case REQ_SUBSCRIBE:
+                handleSubscribe(payload.data(), payload.size());
+                break;
+            case REQ_UNSUBSCRIBE:
+                handleUnsubscribe(payload.data(), payload.size());
+                break;
+            case REQ_PUBLISH_TEXT:
+                handlePublishText(payload.data(), payload.size());
+                break;
 
             default:
                 cout << "Unknown OpCode: " << (int)opcode << endl;
@@ -171,12 +186,9 @@ void ServerHandler::run() {
 
 // Xử lý Đăng Ký
 void ServerHandler::handleRegister(const void* payloadData, uint32_t len) {
-    const uint8_t* ptr = static_cast<const uint8_t*>(payloadData);
-    vector<uint8_t> buffer(ptr, ptr + len);
-    
-    size_t offset = 0;
-    string username = DataUtils::unpackString(buffer, offset);
-    string password = DataUtils::unpackString(buffer, offset);
+    PacketReader reader(payloadData, len);
+    string username = reader.readString();
+    string password = reader.readString();
 
     if (username.empty() || password.empty()) {
         uint8_t status = REGISTER_FAIL_INVALID;
@@ -185,74 +197,64 @@ void ServerHandler::handleRegister(const void* payloadData, uint32_t len) {
     }
 
     uint8_t status;
-
-    // Lock DB
     {
-        lock_guard<mutex> lock(dbMutex);
+        // Write Lock: Chỉ 1 người được đăng ký tại 1 thời điểm để tránh trùng lặp
+        unique_lock<shared_mutex> lock(dbMutex);
         
         if (userDB.find(username) != userDB.end()) {
             status = REGISTER_FAIL_EXISTS;
             cout << "[REGISTER] Fail (Exist): " << username << endl;
         } else {
             userDB[username] = password;
-            saveUserToFile(username, password);
+            saveUserToFile(username, password); // Lưu ngay xuống file
             status = REGISTER_OK;
             cout << "[REGISTER] Success: " << username << endl;
         }
     }
 
-    // Gửi phản hồi
     NetworkUtils::sendPacket(clientSocket, RES_REGISTER, &status, 1);
 }
 
 // Xử lý Đăng Nhập
 void ServerHandler::handleLogin(const void* payloadData, uint32_t len) {
-    const uint8_t* ptr = static_cast<const uint8_t*>(payloadData);
-    vector<uint8_t> buffer(ptr, ptr + len);
-    
-    size_t offset = 0;
-    string username = DataUtils::unpackString(buffer, offset);
-    string password = DataUtils::unpackString(buffer, offset);
+    PacketReader reader(payloadData, len);
+    string username = reader.readString();
+    string password = reader.readString();
 
     uint8_t status;
-
-    // Lock DB
     {
-        lock_guard<mutex> lock(dbMutex);
+        shared_lock<shared_mutex> lock(dbMutex);
 
         if (userDB.find(username) == userDB.end()) {
             status = LOGIN_FAIL_NOT_FOUND;
-            cout << "[LOGIN] Fail (Not Found): " << username << endl;
-        } 
-        else if (userDB[username] != password) {
+        } else if (userDB[username] != password) {
             status = LOGIN_FAIL_WRONG_PASS;
-            cout << "[LOGIN] Fail (Wrong Pass): " << username << endl;
-        } 
-        else {
+        } else {
             status = LOGIN_OK;
             this->currentUser = username;
             this->isLogged = true;
             cout << "[LOGIN] Success: " << username << endl;
         }
     }
-
-    // Gửi phản hồi
     NetworkUtils::sendPacket(clientSocket, RES_LOGIN, &status, 1);
 }
 
 // Xử lý Tạo Topic
 void ServerHandler::handleCreateTopic(const void* payloadData, uint32_t len) {
-    if (!isLogged) return; // Chưa login thì không cho tạo
+    if (!isLogged) return; 
 
-    const uint8_t* ptr = static_cast<const uint8_t*>(payloadData);
-    vector<uint8_t> buffer(ptr, ptr + len);
-    size_t offset = 0;
-    string topicName = DataUtils::unpackString(buffer, offset);
+    // Dùng PacketReader
+    PacketReader reader(payloadData, len);
+    string topicName = reader.readString();
+
+    if (topicName.empty()) return;
 
     uint8_t status;
     uint32_t newTopicId = 0;
     {
-        lock_guard<mutex> lock(topicMutex);
+        // Write Lock: Khóa để tăng ID và thêm topic an toàn
+        unique_lock<shared_mutex> lock(topicMutex);
+        
         if (topicDB.find(topicName) != topicDB.end()) {
             status = TOPIC_FAIL_EXISTS;
         } else {
@@ -260,40 +262,40 @@ void ServerHandler::handleCreateTopic(const void* payloadData, uint32_t len) {
             newTopicId = globalTopicIdCounter;
 
             Topic t; 
+            t.id = newTopicId; // Lưu lại ID
             t.name = topicName; 
             t.creator = this->currentUser;
             topicDB[topicName] = t;
             
-            // Lưu xuống file
             saveTopicToFile(newTopicId, topicName, this->currentUser);
             
             status = TOPIC_CREATE_OK;
-            cout << "[TOPIC] New topic created: " << topicName << " by " << currentUser << " (ID: " << newTopicId << ")" << endl;
+            cout << "[TOPIC] Created: " << topicName << " (ID: " << newTopicId << ") by " << currentUser << endl;
         }
     }
 
-    vector<uint8_t> response;
-    response.push_back(status);
+    // Đóng gói phản hồi: [Status 1B] + [TopicID 4B]
+    PacketBuilder builder;
+    builder.addBlob(&status, 1); // Thêm status (byte thô)
     if (status == TOPIC_CREATE_OK) {
-        vector<uint8_t> idBytes = DataUtils::packInt(newTopicId);
-        response.insert(response.end(), idBytes.begin(), idBytes.end());
+        builder.addInt(newTopicId);
     }
 
-    NetworkUtils::sendPacket(clientSocket, RES_CREATE_TOPIC, &status, 1);
+    NetworkUtils::sendPacket(clientSocket, RES_CREATE_TOPIC, builder.getData(), builder.getSize());
 }
 
-// Xử lý Xóa Topic
+// Xử lý Xóa Topic (Ghi DB Topic -> Dùng unique_lock)
 void ServerHandler::handleDeleteTopic(const void* payloadData, uint32_t len) {
     if (!isLogged) return;
 
-    const uint8_t* ptr = static_cast<const uint8_t*>(payloadData);
-    vector<uint8_t> buffer(ptr, ptr + len);
-    size_t offset = 0;
-    string topicName = DataUtils::unpackString(buffer, offset);
+    PacketReader reader(payloadData, len);
+    string topicName = reader.readString();
 
     uint8_t status;
     {
-        lock_guard<mutex> lock(topicMutex);
+        //  Write Lock
+        std::unique_lock<std::shared_mutex> lock(topicMutex);
+        
         auto it = topicDB.find(topicName);
         if (it == topicDB.end()) {
             status = TOPIC_FAIL_NOT_FOUND;
@@ -302,12 +304,13 @@ void ServerHandler::handleDeleteTopic(const void* payloadData, uint32_t len) {
             if (it->second.creator != this->currentUser) {
                 status = TOPIC_FAIL_DENIED;
             } else {
-                topicDB.erase(it); // Xóa khỏi RAM
+                topicDB.erase(it);
                 status = TOPIC_DELETE_OK;
                 cout << "[TOPIC] Deleted: " << topicName << " by " << currentUser << endl;
             }
         }
     }
+    
     NetworkUtils::sendPacket(clientSocket, RES_DELETE_TOPIC, &status, 1);
 }
 
@@ -368,4 +371,78 @@ void ServerHandler::handleGetMyTopics() {
     }
 
     NetworkUtils::sendPacket(clientSocket, RES_GET_MY_TOPICS, payload.data(), payload.size());
+}
+
+void ServerHandler::handleSubscribe(const void* payloadData, uint32_t len) {
+    if (!isLogged) return;
+
+    PacketReader reader(payloadData, len);
+    uint32_t topicId = reader.readInt(); // Đọc ID topic client muốn sub
+
+    {
+        std::unique_lock<std::shared_mutex> lock(subMutex);
+        topicSubscribers[topicId].insert(this->clientSocket);
+    }
+    
+    // Phản hồi OK
+    uint8_t status = SUB_OK;
+    NetworkUtils::sendPacket(clientSocket, RES_SUBSCRIBE, &status, 1);
+    cout << "[SUB] User " << currentUser << " subscribed topic " << topicId << endl;
+}
+
+// Xử lý Hủy theo dõi (Unsubscribe)
+void ServerHandler::handleUnsubscribe(const void* payloadData, uint32_t len) {
+    if (!isLogged) return;
+
+    PacketReader reader(payloadData, len);
+    uint32_t topicId = reader.readInt();
+
+    {
+        std::unique_lock<std::shared_mutex> lock(subMutex);
+        topicSubscribers[topicId].erase(this->clientSocket);
+    }
+
+    uint8_t status = UNSUB_OK;
+    NetworkUtils::sendPacket(clientSocket, RES_UNSUBSCRIBE, &status, 1);
+    cout << "[UNSUB] User " << currentUser << " unsubscribed topic " << topicId << endl;
+}
+
+// Xử lý Chat Text (Publish)
+void ServerHandler::handlePublishText(const void* payloadData, uint32_t len) {
+    if (!isLogged) return;
+
+    // B1: Đọc dữ liệu gửi lên
+    PacketReader reader(payloadData, len);
+    uint32_t topicId = reader.readInt();
+    string msgContent = reader.readString();
+
+    // B2: Phản hồi cho người gửi biết server đã nhận
+    uint8_t status = STATUS_SUCCESS;
+    NetworkUtils::sendPacket(clientSocket, RES_PUBLISH, &status, 1);
+
+    // B3: Broadcast cho tất cả người đang sub topic này
+    // Cấu trúc gói tin NOTIFY: [topic_id][user_len][user][msg_len][msg]
+    PacketBuilder builder;
+    builder.addInt(topicId);
+    builder.addString(this->currentUser); // Người gửi là người hiện tại
+    builder.addString(msgContent);
+
+    {
+        std::shared_lock<std::shared_mutex> lock(subMutex);
+        // Lấy danh sách socket đang sub topic này
+        if (topicSubscribers.count(topicId)) {
+            const auto& subs = topicSubscribers[topicId];
+            for (int sock : subs) {
+                // Không gửi lại cho chính người nói (optional, tùy logic app)
+                if (sock != this->clientSocket) {
+                     NetworkUtils::sendPacket(sock, NOTIFY_MSG_TEXT, builder.getData(), builder.getSize());
+                }
+            }
+        }
+    }
+    
+    // (Optional) Lưu vào History log file theo yêu cầu Phase 2 tại đây
+    // saveChatLog(topicId, currentUser, msgContent);
+    
+    cout << "[CHAT] Topic " << topicId << " | " << currentUser << ": " << msgContent << endl;
 }

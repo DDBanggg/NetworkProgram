@@ -3,6 +3,8 @@
 
 #include <cstdint>
 #include <string>
+#include <shared_mutex> 
+#include <set>
 
 class ServerHandler {
 public:
@@ -30,6 +32,10 @@ private:
     void handleDeleteTopic(const void* payload, uint32_t len);
     void handleGetAllTopics();
     void handleGetMyTopics();
+
+    void handleSubscribe(const void* payload, uint32_t len);
+    void handleUnsubscribe(const void* payload, uint32_t len);
+    void handlePublishText(const void* payload, uint32_t len);
 };
 
 #endif // SERVER_HANDLER_H
