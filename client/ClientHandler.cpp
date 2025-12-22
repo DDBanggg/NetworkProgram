@@ -91,3 +91,4 @@ bool ClientHandler::requestPublish(uint32_t topicId, const string& message) {
     builder.addString(message);
     return NetworkUtils::sendPacket(serverSocket, REQ_PUBLISH_TEXT, builder.getData(), builder.getSize());
 }
+

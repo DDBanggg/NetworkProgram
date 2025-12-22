@@ -94,9 +94,17 @@ void listenerThread(int socket) {
 
             // Phản hồi gửi tin nhắn
             case RES_PUBLISH: {
-                // Server xác nhận đã nhận tin, không cần in gì cũng được, hoặc in debug
-                break;
+            // Server trả về 1 byte trạng thái
+            uint8_t status = payload.empty() ? 1 : payload[0];
+            
+            if (status == STATUS_SUCCESS) {
+                // In nhẹ thông báo để user biết tin đã đi (tùy chọn)
+                // cout << "\n[INFO] Da gui tin nhan." << endl;
+            } else {
+                cout << "\n[ERROR] Gui tin that bai (Server loi hoac Topic khong ton tai)." << endl;
             }
+            break;
+        }
 
             default:
                 break;
@@ -167,7 +175,7 @@ int main(int argc, char const *argv[]) {
                         cout << "1. Xem DS Topic\t 2. Topic cua toi" << endl;
                         cout << "3. Tao Topic\t 4. Xoa Topic" << endl;
                         cout << "5. Subscribe\t 6. Unsubscribe" << endl;
-                        cout << "7. Chat\t\t 0. Dang xuat" << endl;
+                        cout << "7. Publish (Gui tin)\t\t 0. Dang xuat" << endl;
                         cout << "Lua chon: ";
 
                         int subChoice;
@@ -194,10 +202,25 @@ int main(int argc, char const *argv[]) {
                                 cout << "ID Topic muon Unsub: "; cin >> tid; cin.ignore();
                                 handler.requestUnsubscribe(tid);
                                 break;
-                            case 7:
-                                cout << "ID Topic muon chat: "; cin >> tid; cin.ignore();
-                                cout << "Noi dung: "; getline(cin, buf);
-                                handler.requestPublish(tid, buf);
+                            case 7: 
+                                cout << "--- PUBLISH MESSAGE ---" << endl;
+                                cout << "Nhap ID Topic muon gui tin: "; 
+                                if (!(cin >> tid)) {
+                                    cin.clear(); cin.ignore(10000, '\n');
+                                    cout << ">> ID khong hop le!" << endl;
+                                    break;
+                                }
+                                cin.ignore(); // Xóa bộ đệm sau khi nhập số
+
+                                cout << "Nhap noi dung tin nhan: "; 
+                                getline(cin, buf);
+
+                                // Gọi Handler để đóng gói và gửi đi
+                                if (handler.requestPublish(tid, buf)) {
+                                    cout << ">> Da gui lenh Publish!" << endl;
+                                } else {
+                                    cout << ">> Loi gui tin (Mat ket noi?)" << endl;
+                                }
                                 break;
                             case 0:
                                 loggedIn = false;
