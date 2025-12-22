@@ -1,245 +1,165 @@
-// client/ClientHandler.cpp
 #include "ClientHandler.h"
 #include "../common/NetworkUtils.h"
-#include "../common/DataUtils.h"
+#include "../common/DataUtils.h" 
 #include "../common/protocol.h"
 #include <iostream>
-#include <cstring>
+
 using namespace std;
 
 ClientHandler::ClientHandler(int socket) : serverSocket(socket) {}
+ClientHandler::~ClientHandler() {}
 
-ClientHandler::~ClientHandler() {
-    // Không đóng socket ở đây vì socket do ClientApp quản lý vòng đời
-}
+// ==========================================================
+// PHẦN 1: AUTHENTICATION (Đăng ký / Đăng nhập)
+// ==========================================================
 
 bool ClientHandler::requestRegister(const string& username, const string& password) {
-    // 1. Đóng gói Payload: [user_len][user][pass_len][pass]
-    // DataUtils::packString đã tự động thêm 4 bytes độ dài (Big Endian) ở đầu chuỗi
-    vector<uint8_t> payload = DataUtils::packString(username);
-    vector<uint8_t> passBytes = DataUtils::packString(password);
-    
-    // Nối password vào sau username
-    payload.insert(payload.end(), passBytes.begin(), passBytes.end());
+    // [FIX] Dùng PacketBuilder thay vì DataUtils::packString cũ
+    PacketBuilder builder;
+    builder.addString(username);
+    builder.addString(password);
 
-    // 2. Gửi Request (REQ_REGISTER)
-    if (!NetworkUtils::sendPacket(serverSocket, REQ_REGISTER, payload.data(), payload.size())) {
-        cerr << "Error: Failed to send Register request." << endl;
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_REGISTER, builder.getData(), builder.getSize())) {
         return false;
     }
 
-    // 3. Chờ phản hồi NGAY LẬP TỨC (Block chờ) [cite: 152]
-    uint8_t resOpcode;
-    vector<uint8_t> resPayload;
-    if (!NetworkUtils::recvPacket(serverSocket, resOpcode, resPayload)) {
-        cerr << "Error: Connection lost while waiting for response." << endl;
-        return false;
-    }
+    uint8_t op; vector<uint8_t> res;
+    if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
 
-    // 4. Xử lý kết quả
-    if (resOpcode == RES_REGISTER) {
-        if (resPayload.empty()) return false;
-        uint8_t status = resPayload[0];
-
-        if (status == REGISTER_OK) {
+    if (op == RES_REGISTER && !res.empty()) {
+        if (res[0] == REGISTER_OK) {
             cout << ">>> DANG KY THANH CONG! <<<" << endl;
             return true;
-        } else if (status == REGISTER_FAIL_EXISTS) {
+        } else if (res[0] == REGISTER_FAIL_EXISTS) {
             cout << ">>> THAT BAI: Tai khoan da ton tai." << endl;
-            return false;
-        } else {
-            cout << ">>> THAT BAI: Loi khong xac dinh." << endl;
-            return false;
         }
     }
-
     return false;
 }
 
 bool ClientHandler::requestLogin(const string& username, const string& password) {
-    // 1. Đóng gói Payload 
-    vector<uint8_t> payload = DataUtils::packString(username);
-    vector<uint8_t> passBytes = DataUtils::packString(password);
-    payload.insert(payload.end(), passBytes.begin(), passBytes.end());
+    PacketBuilder builder;
+    builder.addString(username);
+    builder.addString(password);
 
-    // 2. Gửi Request (REQ_LOGIN)
-    if (!NetworkUtils::sendPacket(serverSocket, REQ_LOGIN, payload.data(), payload.size())) {
-        cerr << "Error: Failed to send Login request." << endl;
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_LOGIN, builder.getData(), builder.getSize())) {
         return false;
     }
 
-    // 3. Chờ phản hồi
-    uint8_t resOpcode;
-    vector<uint8_t> resPayload;
-    if (!NetworkUtils::recvPacket(serverSocket, resOpcode, resPayload)) {
-        cerr << "Error: Connection lost." << endl;
-        return false;
-    }
-
-    // 4. Xử lý kết quả
-    if (resOpcode == RES_LOGIN) {
-        if (resPayload.empty()) return false;
-        uint8_t status = resPayload[0];
-
-        if (status == LOGIN_OK) {
-            cout << ">>> DANG NHAP THANH CONG! <<<" << endl;
-            return true;
-        } else if (status == LOGIN_FAIL_NOT_FOUND) {
-            cout << ">>> THAT BAI: Tai khoan khong ton tai." << endl;
-            return false;
-        } else if (status == LOGIN_FAIL_WRONG_PASS) {
-            cout << ">>> THAT BAI: Sai mat khau." << endl;
-            return false;
-        }
-    }
-    }
-
-    // 1. Hàm Tạo Topic
-bool ClientHandler::requestCreateTopic(string topicName) {
-    // Đóng gói tên topic
-    vector<uint8_t> payload = DataUtils::packString(topicName);
-    
-    // Gửi REQ_CREATE_TOPIC
-    if (!NetworkUtils::sendPacket(serverSocket, REQ_CREATE_TOPIC, payload.data(), payload.size())) {
-        return false;
-    }
-
-    // Chờ phản hồi
-    uint8_t op; 
-    vector<uint8_t> res;
+    uint8_t op; vector<uint8_t> res;
     if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
 
-    // Xử lý kết quả
-    if (op == RES_CREATE_TOPIC && !res.empty()) {
-        uint8_t status = res[0];
-        if (status == TOPIC_CREATE_OK) return true;
-        if (status == TOPIC_FAIL_EXISTS) {
-            cout << ">> Loi: Ten Topic da ton tai!" << endl;
-        } else {
-            cout << ">> Loi tao topic (Status code: " << (int)status << ")" << endl;
+    if (op == RES_LOGIN && !res.empty()) {
+        if (res[0] == LOGIN_OK) {
+            cout << ">>> DANG NHAP THANH CONG! <<<" << endl;
+            return true;
+        } else if (res[0] == LOGIN_FAIL_NOT_FOUND) {
+            cout << ">>> THAT BAI: Tai khoan khong ton tai." << endl;
+        } else if (res[0] == LOGIN_FAIL_WRONG_PASS) {
+            cout << ">>> THAT BAI: Sai mat khau." << endl;
         }
     }
     return false;
 }
 
-// 2. Hàm Xóa Topic
-bool ClientHandler::requestDeleteTopic(string topicName) {
+// ==========================================================
+// PHẦN 2: QUẢN LÝ TOPIC (Tạo / Xóa / Xem)
+// ==========================================================
 
-    vector<uint8_t> payload = DataUtils::packString(topicName);
+bool ClientHandler::requestCreateTopic(string topicName) {
+    PacketBuilder builder;
+    builder.addString(topicName);
 
-    if (!NetworkUtils::sendPacket(serverSocket, REQ_DELETE_TOPIC, payload.data(), payload.size())) {
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_CREATE_TOPIC, builder.getData(), builder.getSize())) {
         return false;
     }
 
-    uint8_t op; 
-    vector<uint8_t> res;
+    uint8_t op; vector<uint8_t> res;
+    if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
+
+    if (op == RES_CREATE_TOPIC && !res.empty() && res[0] == TOPIC_CREATE_OK) {
+        return true;
+    }
+    cout << ">> Loi tao topic (Co the da ton tai)!" << endl;
+    return false;
+}
+
+bool ClientHandler::requestDeleteTopic(string topicName) {
+    PacketBuilder builder;
+    builder.addString(topicName);
+
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_DELETE_TOPIC, builder.getData(), builder.getSize())) {
+        return false;
+    }
+
+    uint8_t op; vector<uint8_t> res;
     if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
 
     if (op == RES_DELETE_TOPIC && !res.empty()) {
-        uint8_t status = res[0];
-        if (status == TOPIC_DELETE_OK) return true;
-        
-        // Xử lý các mã lỗi đặc thù
-        if (status == TOPIC_FAIL_DENIED) {
-            cout << ">> BAN KHONG PHAI CHU TOPIC NAY NEN KHONG THE XOA!" << endl;
-        } else if (status == TOPIC_FAIL_NOT_FOUND) {
-            cout << ">> Loi: Khong tim thay Topic nay." << endl;
-        } else {
-            cout << ">> Loi xoa topic khac." << endl;
-        }
+        if (res[0] == TOPIC_DELETE_OK) return true;
+        if (res[0] == TOPIC_FAIL_DENIED) cout << ">> Ban khong phai chu topic!" << endl;
+        else cout << ">> Xoa that bai!" << endl;
     }
     return false;
 }
 
-// 3. Hàm Lấy Danh Sách (Chung cho cả All và My)
 void ClientHandler::requestGetList(bool isMyTopic) {
     uint8_t reqOp = isMyTopic ? REQ_GET_MY_TOPICS : REQ_GET_ALL_TOPICS;
     uint8_t resOp = isMyTopic ? RES_GET_MY_TOPICS : RES_GET_ALL_TOPICS;
 
-    // 1. Gửi Request rỗng (Payload size = 0)
     if (!NetworkUtils::sendPacket(serverSocket, reqOp, nullptr, 0)) return;
 
-    // 2. Nhận Response
-    uint8_t op; 
-    vector<uint8_t> res;
+    uint8_t op; vector<uint8_t> res;
     if (!NetworkUtils::recvPacket(serverSocket, op, res)) return;
 
     if (op == resOp) {
-        size_t offset = 0;
+        PacketReader reader(res);
+        uint32_t count = reader.readInt();
         
-        // 3. Parse số lượng (4 byte đầu)
-        if (res.size() < 4) {
-            cout << ">> Danh sach rong hoac loi packet." << endl;
-            return;
-        }
-
-        uint32_t netCount;
-        memcpy(&netCount, &res[offset], 4);
-        uint32_t count = ntohl(netCount); // Chuyển Big Endian -> Little Endian
-        offset += 4;
-
-        cout << "\n----------------------------------------" << endl;
-        if (isMyTopic) cout << " DANH SACH TOPIC CUA TOI (Tong: " << count << ")" << endl;
-        else           cout << " DANH SACH TAT CA TOPIC (Tong: " << count << ")" << endl;
-        cout << "----------------------------------------" << endl;
-        
-        // 4. Loop để đọc từng Topic
+        cout << "\n--- DANH SACH (" << count << " Topics) ---" << endl;
         for (uint32_t i = 0; i < count; ++i) {
-            string name = DataUtils::unpackString(res, offset);
-            string creator = DataUtils::unpackString(res, offset);
-            
-            cout << "#" << (i + 1) << ". [" << name << "] - Chu thot: " << creator << endl;
+            string name = reader.readString();
+            string creator = reader.readString();
+            cout << "#" << (i + 1) << ". [" << name << "] - Creator: " << creator << endl;
         }
-        cout << "----------------------------------------" << endl;
+        cout << "-----------------------------------" << endl;
     }
 }
 
-// 1. Gửi yêu cầu Đăng ký theo dõi (Subscribe)
+// ==========================================================
+// PHẦN 3: SUBSCRIBE & CHAT (Mới bổ sung)
+// ==========================================================
+
 bool ClientHandler::requestSubscribe(uint32_t topicId) {
     PacketBuilder builder;
-    builder.addInt(topicId); // Đóng gói ID topic
+    builder.addInt(topicId);
 
-    if (!NetworkUtils::sendPacket(serverSocket, REQ_SUBSCRIBE, builder.getData(), builder.getSize())) {
-        return false;
-    }
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_SUBSCRIBE, builder.getData(), builder.getSize())) return false;
 
     uint8_t op; vector<uint8_t> res;
     if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
-
-    if (op == RES_SUBSCRIBE && !res.empty()) {
-        return (res[0] == SUB_OK); // Trả về true nếu Server báo OK
-    }
-    return false;
+    return (op == RES_SUBSCRIBE && !res.empty() && res[0] == SUB_OK);
 }
 
-// 2. Gửi yêu cầu Hủy theo dõi (Unsubscribe)
 bool ClientHandler::requestUnsubscribe(uint32_t topicId) {
     PacketBuilder builder;
     builder.addInt(topicId);
 
-    if (!NetworkUtils::sendPacket(serverSocket, REQ_UNSUBSCRIBE, builder.getData(), builder.getSize())) {
-        return false;
-    }
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_UNSUBSCRIBE, builder.getData(), builder.getSize())) return false;
 
     uint8_t op; vector<uint8_t> res;
     if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
-
     return (op == RES_UNSUBSCRIBE && !res.empty() && res[0] == UNSUB_OK);
 }
 
-// 3. Gửi tin nhắn lên Topic (Publish)
 bool ClientHandler::requestPublish(uint32_t topicId, const string& message) {
     PacketBuilder builder;
     builder.addInt(topicId);
     builder.addString(message);
 
-    if (!NetworkUtils::sendPacket(serverSocket, REQ_PUBLISH_TEXT, builder.getData(), builder.getSize())) {
-        return false;
-    }
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_PUBLISH_TEXT, builder.getData(), builder.getSize())) return false;
 
     uint8_t op; vector<uint8_t> res;
     if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
-
     return (op == RES_PUBLISH && !res.empty() && res[0] == STATUS_SUCCESS);
 }
-    

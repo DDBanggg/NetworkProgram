@@ -1,4 +1,3 @@
-
 #include <iostream>
 #include <string>
 #include <thread>
@@ -6,24 +5,56 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
+#include <signal.h> 
 #include "ClientHandler.h"
+#include "../common/DataUtils.h" 
+#include "../common/protocol.h"
 
 using namespace std;
 
+// --- HÀM CHẠY NGẦM NHẬN TIN NHẮN TỪ SERVER ---
+void listenerThread(int socket) {
+    while (true) {
+        uint8_t opcode;
+        vector<uint8_t> payload;
+        
+        // Hàm này sẽ block cho đến khi Server gửi gì đó về
+        if (!NetworkUtils::recvPacket(socket, opcode, payload)) {
+            cout << "\n[SYSTEM] Mat ket noi Server (Listener stopped)!" << endl;
+            exit(0); // Thoát chương trình nếu mất mạng
+        }
+
+        // Nếu là tin nhắn Chat (OpCode 28 - NOTIFY_MSG_TEXT)
+        if (opcode == NOTIFY_MSG_TEXT) {
+            PacketReader reader(payload);
+            uint32_t topicId = reader.readInt();
+            string sender = reader.readString();
+            string msg = reader.readString();
+            
+            // In đè lên màn hình
+            cout << "\n\n>>> [Topic " << topicId << "] " << sender << ": " << msg << endl;
+            cout << "Lua chon: " << flush; // In lại dấu nhắc nhập liệu
+        }
+    }
+}
+// -----------------------------------------------
+
 void showMenu() {
-    cout << "\n=== BANG TIN DIEN TU (SPRINT 1) ===" << endl;
+    cout << "\n=== MENU CHINH ===" << endl;
     cout << "1. Dang Ky (Register)" << endl;
     cout << "2. Dang Nhap (Login)" << endl;
     cout << "3. Thoat (Exit)" << endl;
-    cout << "Nhap lua chon: ";
+    cout << "Chon: ";
 }
 
 int main(int argc, char const *argv[]) {
-    //CẤU HÌNH SERVER
+    // [FIX] Bỏ qua tín hiệu SIGPIPE để tránh crash khi mất kết nối đột ngột
+    signal(SIGPIPE, SIG_IGN); 
+
+    // CẤU HÌNH SERVER
     string serverIP = "127.0.0.1"; 
     int serverPort = 8080;
 
-    // 1. Kết nối tới Server
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         cerr << "Socket creation error" << endl;
@@ -32,143 +63,107 @@ int main(int argc, char const *argv[]) {
 
     struct sockaddr_in serv_addr;
     serv_addr.sin_family = AF_INET;
-    
-    // SỬ DỤNG BIẾN serverPort
     serv_addr.sin_port = htons(serverPort); 
 
-    // Chuyển đổi IP: SỬ DỤNG BIẾN serverIP
-    // Lưu ý: inet_pton cần tham số là char*, nên phải dùng .c_str()
     if (inet_pton(AF_INET, serverIP.c_str(), &serv_addr.sin_addr) <= 0) {
-        cerr << "Invalid address/ Address not supported" << endl;
+        cerr << "Invalid address" << endl;
         return -1;
     }
 
-    cout << "Connecting to server " << serverIP << ":" << serverPort << "..." << endl;
+    cout << "Dang ket noi den server " << serverIP << ":" << serverPort << "..." << endl;
     
     if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        cerr << "Connection Failed. Is server running?" << endl;
+        cerr << "Ket noi that bai. Server da bat chua?" << endl;
         return -1;
     }
-    cout << "Connected successfully!" << endl;
+    cout << "Ket noi thanh cong!" << endl;
 
-    // 2. Khởi tạo Handler
     ClientHandler handler(sock);
-
-    // 3. Vòng lặp Menu (Main Thread)
     bool isRunning = true;
+
     while (isRunning) {
         showMenu();
         int choice;
-        // Kiểm tra xem người dùng có nhập phải chữ cái gây lỗi lặp vô hạn không
         if (!(cin >> choice)) {
-             cout << "Vui long nhap so!" << endl;
-             cin.clear(); 
-             cin.ignore(10000, '\n');
-             continue;
+            cin.clear(); cin.ignore(10000, '\n');
+            continue;
         }
-
-        cin.ignore(); // Xóa bộ đệm
+        cin.ignore(); 
 
         string u, p;
         switch (choice) {
-            case 1: // Đăng ký
-                cout << "--- DANG KY ---" << endl;
-                cout << "Username: "; getline(cin, u);
-                cout << "Password: "; getline(cin, p);
+            case 1: 
+                cout << "User: "; getline(cin, u);
+                cout << "Pass: "; getline(cin, p);
                 handler.requestRegister(u, p);
                 break;
 
-            case 2: // Đăng nhập
-                cout << "--- DANG NHAP ---" << endl;
-                cout << "Username: "; getline(cin, u);
-                cout << "Password: "; getline(cin, p);
+            case 2:
+                cout << "User: "; getline(cin, u);
+                cout << "Pass: "; getline(cin, p);
                 
                 if (handler.requestLogin(u, p)) {
+                    // [QUAN TRỌNG] Login thành công -> Bật luồng nghe tin nhắn
+                    std::thread t(listenerThread, sock);
+                    t.detach(); // Tách luồng để nó chạy ngầm vĩnh viễn
+
                     bool loggedIn = true;
                     while (loggedIn) {
-                        cout << "\n=== DASHBOARD MENU (" << u << ") ===" << endl;
-                        cout << "1. Xem ds Topic (Get All)" << endl;
-                        cout << "2. Topic cua toi (My Topics)" << endl;
-                        cout << "3. Tao Topic moi" << endl;
-                        cout << "4. Xoa Topic" << endl;
-                        // --- PHẦN MỚI ---
-                        cout << "5. Subscribe (Theo doi Topic)" << endl;
-                        cout << "6. Unsubscribe (Huy theo doi)" << endl;
-                        cout << "7. Chat (Gui tin nhan)" << endl;
-                        // ----------------
-                        cout << "0. Dang xuat" << endl;
+                        cout << "\n=== DASHBOARD (" << u << ") ===" << endl;
+                        cout << "1. Xem DS Topic\t 2. Topic cua toi" << endl;
+                        cout << "3. Tao Topic\t 4. Xoa Topic" << endl;
+                        cout << "5. Subscribe\t 6. Unsubscribe" << endl;
+                        cout << "7. Chat\t\t 0. Dang xuat" << endl;
                         cout << "Lua chon: ";
 
                         int subChoice;
                         if (!(cin >> subChoice)) {
-                            cin.clear(); cin.ignore(10000, '\n');
-                            continue;
+                            cin.clear(); cin.ignore(10000, '\n'); continue;
                         }
-                        cin.ignore(); // Xóa bộ đệm sau khi nhập số
+                        cin.ignore();
 
-                        string buf;
-                        uint32_t tId;
-
+                        string buf; uint32_t tid;
                         switch (subChoice) {
-                            case 1:
-                                handler.requestGetList(false); // Get All
-                                break;
-                            case 2:
-                                handler.requestGetList(true); // Get My Topics
-                                break;
+                            case 1: handler.requestGetList(false); break;
+                            case 2: handler.requestGetList(true); break;
                             case 3:
-                                cout << "Nhap ten Topic moi: "; getline(cin, buf);
-                                if (handler.requestCreateTopic(buf)) {
-                                    cout << ">> Tao Topic thanh cong!" << endl;
-                                }
+                                cout << "Ten Topic moi: "; getline(cin, buf);
+                                handler.requestCreateTopic(buf);
                                 break;
                             case 4:
-                                cout << "Nhap ten Topic can xoa: "; getline(cin, buf);
-                                if (handler.requestDeleteTopic(buf)) {
-                                    cout << ">> Xoa thanh cong!" << endl;
-                                }
+                                cout << "Ten Topic xoa: "; getline(cin, buf);
+                                handler.requestDeleteTopic(buf);
                                 break;
-                            
-                            // --- XỬ LÝ CHỨC NĂNG MỚI CHO MINH ANH ---
-                            case 5: // Subscribe
-                                cout << "Nhap ID Topic muon theo doi: "; 
-                                cin >> tId; cin.ignore();
-                                if (handler.requestSubscribe(tId)) cout << ">> Da Subscribe thanh cong topic " << tId << "!\n";
-                                else cout << ">> Subscribe that bai (Sai ID hoac da sub roi)\n";
+                            case 5:
+                                cout << "ID Topic muon Sub: "; cin >> tid; cin.ignore();
+                                if(handler.requestSubscribe(tid)) cout << ">> Sub thanh cong!\n";
+                                else cout << ">> Sub that bai.\n";
                                 break;
-
-                            case 6: // Unsubscribe
-                                cout << "Nhap ID Topic muon huy theo doi: "; 
-                                cin >> tId; cin.ignore();
-                                if (handler.requestUnsubscribe(tId)) cout << ">> Da Unsubscribe topic " << tId << "!\n";
-                                else cout << ">> Loi Unsubscribe.\n";
+                            case 6:
+                                cout << "ID Topic muon Unsub: "; cin >> tid; cin.ignore();
+                                if(handler.requestUnsubscribe(tid)) cout << ">> Unsub thanh cong!\n";
+                                else cout << ">> Unsub that bai.\n";
                                 break;
-
-                            case 7: // Chat
-                                cout << "Nhap ID Topic muon chat: "; cin >> tId; cin.ignore();
-                                cout << "Noi dung tin nhan: "; getline(cin, buf);
-                                if (handler.requestPublish(tId, buf)) cout << ">> Da gui tin!\n";
-                                else cout << ">> Gui loi (Chua Subscribe hoac Topic ko ton tai)\n";
+                            case 7:
+                                cout << "ID Topic muon chat: "; cin >> tid; cin.ignore();
+                                cout << "Noi dung: "; getline(cin, buf);
+                                handler.requestPublish(tid, buf);
                                 break;
-                            // ------------------------------------------
-
                             case 0:
                                 loggedIn = false;
-                                cout << ">> Dang xuat thanh cong." << endl;
+                                // Lưu ý: Khi Logout ta chỉ break vòng lặp menu. 
+                                // Luồng listener vẫn đang chạy và có thể in ra thông báo lỗi khi ngắt socket.
+                                cout << ">> Dang xuat...\n";
+                                exit(0);
                                 break;
-                            default:
-                                cout << "Lua chon khong hop le." << endl;
+                            default: cout << "Lua chon sai.\n";
                         }
                     }
                 }
                 break;
 
-            case 3: // Thoát
-                isRunning = false;
-                break;
-
-            default:
-                cout << "Lua chon khong hop le!" << endl;
+            case 3: isRunning = false; break;
+            default: cout << "Lua chon khong hop le!" << endl;
         }
     }
 
