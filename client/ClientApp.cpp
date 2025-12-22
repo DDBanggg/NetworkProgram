@@ -83,16 +83,20 @@ int main(int argc, char const *argv[]) {
                 cout << "Username: "; getline(cin, u);
                 cout << "Password: "; getline(cin, p);
                 
-                // --- BẮT ĐẦU MENU SPRINT 2 ---
                 if (handler.requestLogin(u, p)) {
                     bool loggedIn = true;
                     while (loggedIn) {
                         cout << "\n=== DASHBOARD MENU (" << u << ") ===" << endl;
-                        cout << "1. Xem tat ca Topic" << endl;
-                        cout << "2. Tao Topic moi" << endl;
-                        cout << "3. Topic cua toi" << endl;
+                        cout << "1. Xem ds Topic (Get All)" << endl;
+                        cout << "2. Topic cua toi (My Topics)" << endl;
+                        cout << "3. Tao Topic moi" << endl;
                         cout << "4. Xoa Topic" << endl;
-                        cout << "5. Dang xuat" << endl;
+                        // --- PHẦN MỚI ---
+                        cout << "5. Subscribe (Theo doi Topic)" << endl;
+                        cout << "6. Unsubscribe (Huy theo doi)" << endl;
+                        cout << "7. Chat (Gui tin nhan)" << endl;
+                        // ----------------
+                        cout << "0. Dang xuat" << endl;
                         cout << "Lua chon: ";
 
                         int subChoice;
@@ -100,21 +104,23 @@ int main(int argc, char const *argv[]) {
                             cin.clear(); cin.ignore(10000, '\n');
                             continue;
                         }
-                        cin.ignore(); // Xóa bộ đệm
+                        cin.ignore(); // Xóa bộ đệm sau khi nhập số
 
                         string buf;
+                        uint32_t tId;
+
                         switch (subChoice) {
                             case 1:
                                 handler.requestGetList(false); // Get All
                                 break;
                             case 2:
+                                handler.requestGetList(true); // Get My Topics
+                                break;
+                            case 3:
                                 cout << "Nhap ten Topic moi: "; getline(cin, buf);
                                 if (handler.requestCreateTopic(buf)) {
                                     cout << ">> Tao Topic thanh cong!" << endl;
                                 }
-                                break;
-                            case 3:
-                                handler.requestGetList(true); // Get My Topics
                                 break;
                             case 4:
                                 cout << "Nhap ten Topic can xoa: "; getline(cin, buf);
@@ -122,7 +128,31 @@ int main(int argc, char const *argv[]) {
                                     cout << ">> Xoa thanh cong!" << endl;
                                 }
                                 break;
-                            case 5:
+                            
+                            // --- XỬ LÝ CHỨC NĂNG MỚI CHO MINH ANH ---
+                            case 5: // Subscribe
+                                cout << "Nhap ID Topic muon theo doi: "; 
+                                cin >> tId; cin.ignore();
+                                if (handler.requestSubscribe(tId)) cout << ">> Da Subscribe thanh cong topic " << tId << "!\n";
+                                else cout << ">> Subscribe that bai (Sai ID hoac da sub roi)\n";
+                                break;
+
+                            case 6: // Unsubscribe
+                                cout << "Nhap ID Topic muon huy theo doi: "; 
+                                cin >> tId; cin.ignore();
+                                if (handler.requestUnsubscribe(tId)) cout << ">> Da Unsubscribe topic " << tId << "!\n";
+                                else cout << ">> Loi Unsubscribe.\n";
+                                break;
+
+                            case 7: // Chat
+                                cout << "Nhap ID Topic muon chat: "; cin >> tId; cin.ignore();
+                                cout << "Noi dung tin nhan: "; getline(cin, buf);
+                                if (handler.requestPublish(tId, buf)) cout << ">> Da gui tin!\n";
+                                else cout << ">> Gui loi (Chua Subscribe hoac Topic ko ton tai)\n";
+                                break;
+                            // ------------------------------------------
+
+                            case 0:
                                 loggedIn = false;
                                 cout << ">> Dang xuat thanh cong." << endl;
                                 break;
@@ -131,7 +161,6 @@ int main(int argc, char const *argv[]) {
                         }
                     }
                 }
-                // --- KẾT THÚC MENU SPRINT 2 ---
                 break;
 
             case 3: // Thoát

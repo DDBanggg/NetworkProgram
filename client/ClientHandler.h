@@ -23,6 +23,11 @@ public:
     bool requestCreateTopic(std::string topicName);
     bool requestDeleteTopic(std::string topicName);
     void requestGetList(bool isMyTopic); // isMyTopic = true (Của tôi), false (Tất cả)
+
+    // Nghiệp vụ Sprient 3:
+    bool requestSubscribe(uint32_t topicId);
+    bool requestUnsubscribe(uint32_t topicId);
+    bool requestPublish(uint32_t topicId, const std::string& message);
 };
 
 #endif // CLIENT_HANDLER_H

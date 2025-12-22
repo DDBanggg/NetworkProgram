@@ -193,4 +193,53 @@ void ClientHandler::requestGetList(bool isMyTopic) {
         cout << "----------------------------------------" << endl;
     }
 }
+
+// 1. Gửi yêu cầu Đăng ký theo dõi (Subscribe)
+bool ClientHandler::requestSubscribe(uint32_t topicId) {
+    PacketBuilder builder;
+    builder.addInt(topicId); // Đóng gói ID topic
+
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_SUBSCRIBE, builder.getData(), builder.getSize())) {
+        return false;
+    }
+
+    uint8_t op; vector<uint8_t> res;
+    if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
+
+    if (op == RES_SUBSCRIBE && !res.empty()) {
+        return (res[0] == SUB_OK); // Trả về true nếu Server báo OK
+    }
+    return false;
+}
+
+// 2. Gửi yêu cầu Hủy theo dõi (Unsubscribe)
+bool ClientHandler::requestUnsubscribe(uint32_t topicId) {
+    PacketBuilder builder;
+    builder.addInt(topicId);
+
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_UNSUBSCRIBE, builder.getData(), builder.getSize())) {
+        return false;
+    }
+
+    uint8_t op; vector<uint8_t> res;
+    if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
+
+    return (op == RES_UNSUBSCRIBE && !res.empty() && res[0] == UNSUB_OK);
+}
+
+// 3. Gửi tin nhắn lên Topic (Publish)
+bool ClientHandler::requestPublish(uint32_t topicId, const string& message) {
+    PacketBuilder builder;
+    builder.addInt(topicId);
+    builder.addString(message);
+
+    if (!NetworkUtils::sendPacket(serverSocket, REQ_PUBLISH_TEXT, builder.getData(), builder.getSize())) {
+        return false;
+    }
+
+    uint8_t op; vector<uint8_t> res;
+    if (!NetworkUtils::recvPacket(serverSocket, op, res)) return false;
+
+    return (op == RES_PUBLISH && !res.empty() && res[0] == STATUS_SUCCESS);
+}
     
