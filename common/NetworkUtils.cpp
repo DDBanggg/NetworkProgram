@@ -7,8 +7,19 @@
 #include <cstring> 
 #include <iostream>
 #include <vector>
+#include <iomanip> // Thư viện để in Hex
 
 using namespace std;
+
+void logRawHex(const string& label, const void* data, size_t len) {
+    const uint8_t* ptr = static_cast<const uint8_t*>(data);
+    cout << "[" << label << "] Raw (" << len << " bytes): ";
+    for (size_t i = 0; i < len; ++i) {
+        // In ra 2 ký tự Hex, có số 0 đằng trước nếu cần
+        cout << hex << setfill('0') << setw(2) << (int)ptr[i] << " ";
+    }
+    cout << dec << endl; // Reset về hệ thập phân
+}
 
 bool NetworkUtils::sendAll(int socket, const void* data, size_t len) {
     const char* ptr = static_cast<const char*>(data);
@@ -28,58 +39,67 @@ bool NetworkUtils::recvAll(int socket, void* buffer, size_t len) {
         ssize_t received = recv(socket, ptr + totalReceived, len - totalReceived, 0);
         if (received <= 0) return false;
         totalReceived += received;
-        string s(ptr, len);
-        cout << "Received data: " << s << endl;
     }
-
     return true;
 }
 
 bool NetworkUtils::sendPacket(int socket, uint8_t opcode, const void* payload, uint32_t payloadLen) {
     // 1. Chuẩn bị Header
     MessageHeader header;
-    
-    // Xóa sạch bộ nhớ của header để tránh rác (Best Practice)
     std::memset(&header, 0, sizeof(header)); 
-    
     header.opcode = opcode;
-    header.payloadLen = htonl(payloadLen); // Chuyển sang Big Endian
+    header.payloadLen = htonl(payloadLen);
 
-    // 2. Gửi Header (5 bytes)
-    if (!sendAll(socket, &header, sizeof(header))) return false;
+    // 2. Tạo Buffer chứa cả Header + Payload
+    // Tổng kích thước = 5 bytes (Header) + N bytes (Payload)
+    std::vector<uint8_t> packetBuffer;
+    packetBuffer.reserve(sizeof(MessageHeader) + payloadLen);
 
-    // 3. Gửi Payload (nếu có)
+    // Chèn Header vào buffer
+    const uint8_t* headerPtr = reinterpret_cast<const uint8_t*>(&header);
+    packetBuffer.insert(packetBuffer.end(), headerPtr, headerPtr + sizeof(header));
+
+    // Chèn Payload vào buffer (nếu có)
     if (payloadLen > 0 && payload != nullptr) {
-        if (!sendAll(socket, payload, payloadLen)) return false;
+        const uint8_t* payloadPtr = static_cast<const uint8_t*>(payload);
+        packetBuffer.insert(packetBuffer.end(), payloadPtr, payloadPtr + payloadLen);
     }
-    return true;
+
+    return sendAll(socket, packetBuffer.data(), packetBuffer.size());
 }
 
 bool NetworkUtils::recvPacket(int socket, uint8_t& outOpcode, std::vector<uint8_t>& outPayload) {
     // 1. Nhận Header
-    // Nhận vào buffer tạm trước
     uint8_t headerBuf[sizeof(MessageHeader)]; 
     if (!recvAll(socket, headerBuf, sizeof(MessageHeader))) return false;
 
-    // 2. Parse Header an toàn bằng memcpy 
+    // [LOGGING] In Raw Header ngay khi nhận được
+    logRawHex("RECV HEADER", headerBuf, sizeof(MessageHeader));
+
+    // 2. Parse Header
     MessageHeader header;
     std::memcpy(&header, headerBuf, sizeof(MessageHeader));
 
     outOpcode = header.opcode;
-    uint32_t len = ntohl(header.payloadLen); // Chuyển từ Big Endian về máy
+    uint32_t len = ntohl(header.payloadLen);
 
     // 3. Nhận Payload
     outPayload.clear();
     if (len > 0) {
-        // Kiểm tra kích thước gói tin tối đa để tránh bị tấn công tràn RAM (10 MB)
+        // Kiểm tra an toàn bộ nhớ (Max 10MB)
         if (len > 10 * 1024 * 1024) {
             std::cerr << "Error: Packet too large (" << len << " bytes)" << std::endl;
             return false;
         }
 
         outPayload.resize(len);
-        // Nhận dữ liệu thẳng vào vector
         if (!recvAll(socket, outPayload.data(), len)) return false;
+
+        // [LOGGING] In Raw Payload ngay khi nhận được 
+        logRawHex("RECV PAYLOAD", outPayload.data(), len);
+    } else {
+        cout << "[RECV] No Payload." << endl;
     }
+
     return true;
 }

@@ -3,68 +3,100 @@
 
 #include <vector>
 #include <string>
-#include <cstring>
-#include <arpa/inet.h> 
+#include <cstring>      // memcpy
+#include <arpa/inet.h>  // htonl, ntohl
+#include <iostream>
 
-class DataUtils {
+// ==========================================
+// CLASS 1: PACKET BUILDER 
+// ==========================================
+class PacketBuilder {
+private:
+    std::vector<uint8_t> buffer;
+
 public:
-    // Hỗ trợ đóng gói chuỗi (String) -> Byte Vector
-    // Output: [Length (4B Big Endian)] + [String Data]
-    static std::vector<uint8_t> packString(const std::string& str) {
-        std::vector<uint8_t> buffer;
-        uint32_t len = str.length();
-        uint32_t netLen = htonl(len); // Chuyển sang Big Endian
-
-        // Chèn độ dài (4 bytes)
-        const uint8_t* lenPtr = reinterpret_cast<const uint8_t*>(&netLen);
-        buffer.insert(buffer.end(), lenPtr, lenPtr + sizeof(netLen));
-
-        // Chèn dữ liệu chuỗi
-        buffer.insert(buffer.end(), str.begin(), str.end());
-        
-        return buffer;
+    PacketBuilder() {
+        buffer.reserve(512); // Tối ưu bộ nhớ đệm ban đầu
     }
 
-    // Hỗ trợ đóng gói số nguyên (Int) -> Byte Vector
-    static std::vector<uint8_t> packInt(uint32_t value) {
-        std::vector<uint8_t> buffer;
+    // 1. Thêm số nguyên (4 bytes)
+    void addInt(uint32_t value) {
         uint32_t netValue = htonl(value);
         const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&netValue);
         buffer.insert(buffer.end(), ptr, ptr + sizeof(netValue));
-        return buffer;
     }
 
-    // Hỗ trợ giải nén chuỗi từ buffer
-    // offset: Vị trí bắt đầu đọc trong buffer (sẽ tự động tăng lên sau khi đọc)
-    static std::string unpackString(const std::vector<uint8_t>& buffer, size_t& offset) {
-        if (offset + 4 > buffer.size()) return ""; // Không đủ byte độ dài
+    // 2. Thêm chuỗi kí tự
+    void addString(const std::string& str) {
+        uint32_t len = static_cast<uint32_t>(str.length());
+        addInt(len); // Tự động thêm độ dài trước
+        buffer.insert(buffer.end(), str.begin(), str.end()); // Sau đó thêm nội dung
+    }
 
-        // 1. Đọc độ dài
-        uint32_t netLen;
-        std::memcpy(&netLen, &buffer[offset], 4);
-        uint32_t len = ntohl(netLen);
-        offset += 4;
+    // 3. Thêm dữ liệu binary (ảnh, file...)
+    void addBlob(const void* data, size_t size) {
+        const uint8_t* ptr = static_cast<const uint8_t*>(data);
+        buffer.insert(buffer.end(), ptr, ptr + size);
+    }
 
-        if (offset + len > buffer.size()) return ""; 
+    // Lấy buffer để gửi qua socket
+    const std::vector<uint8_t>& getPacket() const { return buffer; }
+    const void* getData() const { return buffer.data(); }
+    size_t getSize() const { return buffer.size(); }
 
-        // 2. Đọc chuỗi
-        std::string str(buffer.begin() + offset, buffer.begin() + offset + len);
-        offset += len;
+    void reset() { buffer.clear(); }
+};
 
+// ==========================================
+// CLASS 2: PACKET READER 
+// ==========================================
+class PacketReader {
+private:
+    std::vector<uint8_t> buffer;
+    size_t cursor; // Con trỏ tự động nhớ vị trí đang đọc
+
+public:
+    // Khởi tạo Reader từ dữ liệu nhận được
+    PacketReader(const std::vector<uint8_t>& data) : buffer(data), cursor(0) {}
+    
+    // Constructor cho trường hợp nhận raw pointer từ socket
+    PacketReader(const void* data, size_t size) : cursor(0) {
+        const uint8_t* ptr = static_cast<const uint8_t*>(data);
+        buffer.assign(ptr, ptr + size);
+    }
+
+    // 1. Đọc số nguyên
+    uint32_t readInt() {
+        if (cursor + 4 > buffer.size()) return 0; // Bảo vệ tràn bộ nhớ
+        
+        uint32_t netValue;
+        std::memcpy(&netValue, &buffer[cursor], 4);
+        cursor += 4;
+        
+        return ntohl(netValue);
+    }
+
+    // 2. Đọc chuỗi
+    std::string readString() {
+        // Bước 1: Đọc độ dài chuỗi (là 1 số int)
+        uint32_t len = readInt(); 
+        if (len == 0 && cursor >= buffer.size()) return ""; // Lỗi đọc length
+
+        // Bước 2: Kiểm tra xem buffer còn đủ dữ liệu không
+        if (cursor + len > buffer.size()) return "";
+
+        // Bước 3: Trích xuất chuỗi
+        std::string str(buffer.begin() + cursor, buffer.begin() + cursor + len);
+        cursor += len;
+        
         return str;
     }
 
-    // Hỗ trợ giải nén số nguyên từ buffer
-    // Đọc 4 bytes tại vị trí offset, chuyển từ Big Endian về int máy, và tăng offset thêm 4
-    static uint32_t unpackInt(const std::vector<uint8_t>& buffer, size_t& offset) {
-        if (offset + 4 > buffer.size()) return 0; 
-        uint32_t netValue;
-        std::memcpy(&netValue, &buffer[offset], 4);
-        uint32_t value = ntohl(netValue); // Chuyển từ Big Endian về Host
-        offset += 4; // Tự động dời con trỏ đọc
-
-        return value;
-    }
+    // Kiểm tra xem đã đọc hết chưa
+    bool isFinished() const { return cursor >= buffer.size(); }
+    
+    // Lấy vị trí hiện tại (nếu cần debug)
+    size_t getCursor() const { return cursor; }
 };
 
 #endif
