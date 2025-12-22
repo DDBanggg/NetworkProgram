@@ -368,6 +368,7 @@ void ServerHandler::handleGetMyTopics() {
     }
 
     NetworkUtils::sendPacket(clientSocket, RES_GET_MY_TOPICS, builder.getData(), builder.getSize());
+}
 
 void ServerHandler::handleSubscribe(const void* payloadData, uint32_t len) {
     if (!isLogged) return;
