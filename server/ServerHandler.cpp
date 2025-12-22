@@ -319,7 +319,8 @@ void ServerHandler::handleGetAllTopics() {
     if (!isLogged) return;
     
     vector<uint8_t> payload;
-    lock_guard<mutex> lock(topicMutex);
+
+    shared_lock<shared_mutex> lock(topicMutex);
     
     // Đếm số lượng topic
     uint32_t count = topicDB.size(); 
@@ -345,7 +346,8 @@ void ServerHandler::handleGetMyTopics() {
     if (!isLogged) return;
     
     vector<uint8_t> payload;
-    lock_guard<mutex> lock(topicMutex);
+
+    shared_lock<shared_mutex> lock(topicMutex);
     
     // 1. Lọc trước để đếm số lượng
     uint32_t count = 0;
