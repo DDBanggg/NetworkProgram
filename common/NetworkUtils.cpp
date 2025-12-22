@@ -13,7 +13,7 @@ using namespace std;
 
 void logRawHex(const string& label, const void* data, size_t len) {
     const uint8_t* ptr = static_cast<const uint8_t*>(data);
-    cout << "[" << label << "] Raw (" << len << " bytes): ";
+    cout << "[" << label << "] (" << len << " bytes): ";
     for (size_t i = 0; i < len; ++i) {
         // In ra 2 ký tự Hex, có số 0 đằng trước nếu cần
         cout << hex << setfill('0') << setw(2) << (int)ptr[i] << " ";
@@ -51,39 +51,36 @@ bool NetworkUtils::sendPacket(int socket, uint8_t opcode, const void* payload, u
     header.payloadLen = htonl(payloadLen);
 
     // 2. Tạo Buffer chứa cả Header + Payload
-    // Tổng kích thước = 5 bytes (Header) + N bytes (Payload)
     std::vector<uint8_t> packetBuffer;
     packetBuffer.reserve(sizeof(MessageHeader) + payloadLen);
 
-    // Chèn Header vào buffer
+    // Chèn Header
     const uint8_t* headerPtr = reinterpret_cast<const uint8_t*>(&header);
     packetBuffer.insert(packetBuffer.end(), headerPtr, headerPtr + sizeof(header));
 
-    // Chèn Payload vào buffer (nếu có)
+    // Chèn Payload 
     if (payloadLen > 0 && payload != nullptr) {
         const uint8_t* payloadPtr = static_cast<const uint8_t*>(payload);
         packetBuffer.insert(packetBuffer.end(), payloadPtr, payloadPtr + payloadLen);
     }
 
+    // 3. Gửi 
     return sendAll(socket, packetBuffer.data(), packetBuffer.size());
 }
 
 bool NetworkUtils::recvPacket(int socket, uint8_t& outOpcode, std::vector<uint8_t>& outPayload) {
-    // 1. Nhận Header
+    // 1. Nhận Header (5 bytes)
     uint8_t headerBuf[sizeof(MessageHeader)]; 
     if (!recvAll(socket, headerBuf, sizeof(MessageHeader))) return false;
 
-    // [LOGGING] In Raw Header ngay khi nhận được
-    logRawHex("RECV HEADER", headerBuf, sizeof(MessageHeader));
-
-    // 2. Parse Header
+    // Parse Header để biết độ dài payload cần đọc tiếp
     MessageHeader header;
     std::memcpy(&header, headerBuf, sizeof(MessageHeader));
 
     outOpcode = header.opcode;
     uint32_t len = ntohl(header.payloadLen);
 
-    // 3. Nhận Payload
+    // 2. Nhận Payload
     outPayload.clear();
     if (len > 0) {
         // Kiểm tra an toàn bộ nhớ (Max 10MB)
@@ -94,12 +91,20 @@ bool NetworkUtils::recvPacket(int socket, uint8_t& outOpcode, std::vector<uint8_
 
         outPayload.resize(len);
         if (!recvAll(socket, outPayload.data(), len)) return false;
-
-        // [LOGGING] In Raw Payload ngay khi nhận được 
-        logRawHex("RECV PAYLOAD", outPayload.data(), len);
-    } else {
-        cout << "[RECV] No Payload." << endl;
     }
+
+    std::vector<uint8_t> fullLogBuffer;
+    fullLogBuffer.reserve(sizeof(MessageHeader) + len);
+    
+    // Thêm header vào log buffer
+    fullLogBuffer.insert(fullLogBuffer.end(), headerBuf, headerBuf + sizeof(MessageHeader));
+    
+    // Thêm payload vào log buffer
+    if (len > 0) {
+        fullLogBuffer.insert(fullLogBuffer.end(), outPayload.begin(), outPayload.end());
+    }
+
+    logRawHex("RECV PACKET", fullLogBuffer.data(), fullLogBuffer.size());
 
     return true;
 }
