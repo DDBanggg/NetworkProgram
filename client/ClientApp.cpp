@@ -9,7 +9,7 @@
 #include "ClientHandler.h"
 #include "../common/DataUtils.h" 
 #include "../common/protocol.h"
-
+#include "../common/NetworkUtils.h"
 using namespace std;
 
 // --- HÀM CHẠY NGẦM NHẬN TIN NHẮN TỪ SERVER ---
@@ -51,7 +51,7 @@ int main(int argc, char const *argv[]) {
     signal(SIGPIPE, SIG_IGN); 
 
     // CẤU HÌNH SERVER
-    string serverIP = "127.0.0.1"; 
+    string serverIP = "172.18.38.103"; 
     int serverPort = 8080;
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
