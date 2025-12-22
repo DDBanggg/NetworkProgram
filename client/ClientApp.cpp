@@ -37,7 +37,6 @@ void listenerThread(int socket) {
         }
     }
 }
-// -----------------------------------------------
 
 void showMenu() {
     cout << "\n=== MENU CHINH ===" << endl;
@@ -48,7 +47,7 @@ void showMenu() {
 }
 
 int main(int argc, char const *argv[]) {
-    // [FIX] Bỏ qua tín hiệu SIGPIPE để tránh crash khi mất kết nối đột ngột
+    // Bỏ qua tín hiệu SIGPIPE để tránh crash khi mất kết nối đột ngột
     signal(SIGPIPE, SIG_IGN); 
 
     // CẤU HÌNH SERVER
@@ -103,9 +102,9 @@ int main(int argc, char const *argv[]) {
                 cout << "Pass: "; getline(cin, p);
                 
                 if (handler.requestLogin(u, p)) {
-                    // [QUAN TRỌNG] Login thành công -> Bật luồng nghe tin nhắn
+                    //  Login thành công -> Bật luồng nghe tin nhắn
                     std::thread t(listenerThread, sock);
-                    t.detach(); // Tách luồng để nó chạy ngầm vĩnh viễn
+                    t.detach(); // Tách luồng để chạy ngầm vĩnh viễn
 
                     bool loggedIn = true;
                     while (loggedIn) {
@@ -151,7 +150,6 @@ int main(int argc, char const *argv[]) {
                                 break;
                             case 0:
                                 loggedIn = false;
-                                // Lưu ý: Khi Logout ta chỉ break vòng lặp menu. 
                                 // Luồng listener vẫn đang chạy và có thể in ra thông báo lỗi khi ngắt socket.
                                 cout << ">> Dang xuat...\n";
                                 exit(0);

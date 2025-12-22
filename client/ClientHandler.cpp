@@ -14,7 +14,6 @@ ClientHandler::~ClientHandler() {}
 // ==========================================================
 
 bool ClientHandler::requestRegister(const string& username, const string& password) {
-    // [FIX] Dùng PacketBuilder thay vì DataUtils::packString cũ
     PacketBuilder builder;
     builder.addString(username);
     builder.addString(password);
