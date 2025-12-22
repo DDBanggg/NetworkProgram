@@ -18,25 +18,94 @@ void listenerThread(int socket) {
         uint8_t opcode;
         vector<uint8_t> payload;
         
-        // Hàm này sẽ block cho đến khi Server gửi gì đó về
         if (!NetworkUtils::recvPacket(socket, opcode, payload)) {
-            cout << "\n[SYSTEM] Mat ket noi Server (Listener stopped)!" << endl;
-            exit(0); // Thoát chương trình nếu mất mạng
+            cout << "\n[SYSTEM] Mat ket noi Server!" << endl;
+            exit(0); 
         }
 
-        // Nếu là tin nhắn Chat (OpCode 28 - NOTIFY_MSG_TEXT)
-        if (opcode == NOTIFY_MSG_TEXT) {
-            PacketReader reader(payload);
-            uint32_t topicId = reader.readInt();
-            string sender = reader.readString();
-            string msg = reader.readString();
-            
-            // In đè lên màn hình
-            cout << "\n\n>>> [Topic " << topicId << "] " << sender << ": " << msg << endl;
-            cout << "Lua chon: " << flush; // In lại dấu nhắc nhập liệu
+        PacketReader reader(payload);
+
+        // --- XỬ LÝ CÁC USE CASE ---
+        switch (opcode) {
+            // Use Case 9: Nhận tin nhắn Real-time
+            case NOTIFY_MSG_TEXT: {
+                uint32_t topicId = reader.readInt();
+                string sender = reader.readString();
+                string msg = reader.readString();
+                cout << "\n>>> [Topic " << topicId << "] " << sender << ": " << msg << endl;
+                break;
+            }
+
+            // Use Case 4: Tạo Topic thành công
+            case RES_CREATE_TOPIC: {
+                uint8_t status = payload.empty() ? 1 : payload[0]; 
+                if (status == TOPIC_CREATE_OK) {
+                    // ID nằm sau byte status (offset 1)
+                    if (payload.size() >= 5) {
+                        uint32_t newId;
+                        memcpy(&newId, &payload[1], 4);
+                        newId = ntohl(newId);
+                        cout << "\n[INFO] Tao Topic THANH CONG! ID: " << newId << endl;
+                    }
+                } else {
+                    cout << "\n[ERROR] Tao Topic THAT BAI (Ten trung hoac loi he thong)." << endl;
+                }
+                break;
+            }
+
+            // Use Case 7: Xóa Topic
+            case RES_DELETE_TOPIC: {
+                uint8_t status = payload.empty() ? 1 : payload[0];
+                if (status == TOPIC_DELETE_OK) cout << "\n[INFO] Xoa Topic THANH CONG!" << endl;
+                else if (status == TOPIC_FAIL_DENIED) cout << "\n[ERROR] Ban khong phai chu Topic nay!" << endl;
+                else cout << "\n[ERROR] Xoa Topic THAT BAI (Khong tim thay)." << endl;
+                break;
+            }
+
+            // Use Case 9: Subscribe
+            case RES_SUBSCRIBE: {
+                uint8_t status = payload.empty() ? 1 : payload[0];
+                if (status == SUB_OK) cout << "\n[INFO] Dang ky theo doi THANH CONG!" << endl;
+                else cout << "\n[ERROR] Dang ky THAT BAI (Sai ID hoac da sub roi)." << endl;
+                break;
+            }
+
+            // Use Case 10: Unsubscribe
+            case RES_UNSUBSCRIBE: {
+                uint8_t status = payload.empty() ? 1 : payload[0];
+                if (status == UNSUB_OK) cout << "\n[INFO] Huy dang ky THANH CONG!" << endl;
+                else cout << "\n[ERROR] Huy dang ky THAT BAI." << endl;
+                break;
+            }
+
+            // Use Case 5 & 6: Xem danh sách Topic
+            case RES_GET_ALL_TOPICS:
+            case RES_GET_MY_TOPICS: {
+                uint32_t count = reader.readInt();
+                cout << "\n--- DANH SACH TOPIC (" << count << ") ---" << endl;
+                for (uint32_t i = 0; i < count; ++i) {
+                    string name = reader.readString();
+                    string creator = reader.readString();
+                    cout << "#" << (i + 1) << ". [" << name << "] - Creator: " << creator << endl;
+                }
+                cout << "-----------------------------------" << endl;
+                break;
+            }
+
+            // Phản hồi gửi tin nhắn
+            case RES_PUBLISH: {
+                // Server xác nhận đã nhận tin, không cần in gì cũng được, hoặc in debug
+                break;
+            }
+
+            default:
+                break;
         }
+
+        cout << "Lua chon: " << flush;
     }
 }
+// -----------------------------------------------
 
 void showMenu() {
     cout << "\n=== MENU CHINH ===" << endl;
@@ -47,35 +116,24 @@ void showMenu() {
 }
 
 int main(int argc, char const *argv[]) {
-    // Bỏ qua tín hiệu SIGPIPE để tránh crash khi mất kết nối đột ngột
     signal(SIGPIPE, SIG_IGN); 
 
-    // CẤU HÌNH SERVER
+    // CẤU HÌNH IP SERVER 
     string serverIP = "172.18.38.103"; 
     int serverPort = 8080;
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        cerr << "Socket creation error" << endl;
-        return -1;
-    }
+    if (sock < 0) return -1;
 
     struct sockaddr_in serv_addr;
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(serverPort); 
-
-    if (inet_pton(AF_INET, serverIP.c_str(), &serv_addr.sin_addr) <= 0) {
-        cerr << "Invalid address" << endl;
-        return -1;
-    }
-
-    cout << "Dang ket noi den server " << serverIP << ":" << serverPort << "..." << endl;
+    inet_pton(AF_INET, serverIP.c_str(), &serv_addr.sin_addr);
     
     if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        cerr << "Ket noi that bai. Server da bat chua?" << endl;
+        cerr << "Khong the ket noi Server " << serverIP << endl;
         return -1;
     }
-    cout << "Ket noi thanh cong!" << endl;
 
     ClientHandler handler(sock);
     bool isRunning = true;
@@ -83,10 +141,7 @@ int main(int argc, char const *argv[]) {
     while (isRunning) {
         showMenu();
         int choice;
-        if (!(cin >> choice)) {
-            cin.clear(); cin.ignore(10000, '\n');
-            continue;
-        }
+        if (!(cin >> choice)) { cin.clear(); cin.ignore(10000, '\n'); continue; }
         cin.ignore(); 
 
         string u, p;
@@ -102,9 +157,9 @@ int main(int argc, char const *argv[]) {
                 cout << "Pass: "; getline(cin, p);
                 
                 if (handler.requestLogin(u, p)) {
-                    //  Login thành công -> Bật luồng nghe tin nhắn
+                    // Kích hoạt Listener ngay sau khi Login thành công
                     std::thread t(listenerThread, sock);
-                    t.detach(); // Tách luồng để chạy ngầm vĩnh viễn
+                    t.detach(); 
 
                     bool loggedIn = true;
                     while (loggedIn) {
@@ -116,9 +171,7 @@ int main(int argc, char const *argv[]) {
                         cout << "Lua chon: ";
 
                         int subChoice;
-                        if (!(cin >> subChoice)) {
-                            cin.clear(); cin.ignore(10000, '\n'); continue;
-                        }
+                        if (!(cin >> subChoice)) { cin.clear(); cin.ignore(10000, '\n'); continue; }
                         cin.ignore();
 
                         string buf; uint32_t tid;
@@ -135,13 +188,11 @@ int main(int argc, char const *argv[]) {
                                 break;
                             case 5:
                                 cout << "ID Topic muon Sub: "; cin >> tid; cin.ignore();
-                                if(handler.requestSubscribe(tid)) cout << ">> Sub thanh cong!\n";
-                                else cout << ">> Sub that bai.\n";
+                                handler.requestSubscribe(tid);
                                 break;
                             case 6:
                                 cout << "ID Topic muon Unsub: "; cin >> tid; cin.ignore();
-                                if(handler.requestUnsubscribe(tid)) cout << ">> Unsub thanh cong!\n";
-                                else cout << ">> Unsub that bai.\n";
+                                handler.requestUnsubscribe(tid);
                                 break;
                             case 7:
                                 cout << "ID Topic muon chat: "; cin >> tid; cin.ignore();
@@ -150,21 +201,17 @@ int main(int argc, char const *argv[]) {
                                 break;
                             case 0:
                                 loggedIn = false;
-                                // Luồng listener vẫn đang chạy và có thể in ra thông báo lỗi khi ngắt socket.
-                                cout << ">> Dang xuat...\n";
+                                cout << ">> Dang xuat... (Vui long restart app de dang nhap lai)" << endl;
                                 exit(0);
                                 break;
-                            default: cout << "Lua chon sai.\n";
                         }
+                        this_thread::sleep_for(chrono::milliseconds(100));
                     }
                 }
                 break;
-
             case 3: isRunning = false; break;
-            default: cout << "Lua chon khong hop le!" << endl;
         }
     }
-
     close(sock);
     return 0;
 }
