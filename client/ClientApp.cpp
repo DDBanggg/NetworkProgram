@@ -127,6 +127,7 @@ void listenerThread(int socket) {
             }
 
             case RES_GET_ALL_TOPICS:
+
             case RES_GET_MY_TOPICS: {
                 uint32_t count = reader.readInt();
                 cout << "\n--- DANH SACH TOPIC (" << count << ") ---" << endl;
@@ -139,6 +140,27 @@ void listenerThread(int socket) {
                     cout << "#" << id << ". [" << name << "] - " << desc << " (by " << creator << ")" << endl;
                 }
                 cout << "-----------------------------------" << endl;
+                break;
+            }
+
+            case RES_HISTORY_START: {
+                uint32_t count = reader.readInt();
+                cout << "\n--- DANG TAI " << count << " TIN NHAN CU ---" << endl;
+                break;
+            }
+
+            case RES_HISTORY_ITEM: {
+                uint8_t type = 0;
+                memcpy(&type, payload.data(), 1); // Đọc 1 byte type đầu tiên
+                PacketReader historyReader(payload.data() + 1, payload.size() - 1);
+                string sender = historyReader.readString();
+                string msg = historyReader.readString();
+                cout << "  (Lich su) " << sender << ": " << msg << endl;
+                break;
+            }
+
+            case RES_HISTORY_END: {
+                cout << "--- KET THUC LICH SU ---" << endl;
                 break;
             }
 
