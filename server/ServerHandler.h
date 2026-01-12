@@ -36,6 +36,9 @@ private:
     void handleSubscribe(const void* payload, uint32_t len);
     void handleUnsubscribe(const void* payload, uint32_t len);
     void handlePublishText(const void* payload, uint32_t len);
+
+    void handlePublishBinary(const void* payload, uint32_t len);
+    void handleGetHistory(const void* payload, uint32_t len);
 };
 
 #endif // SERVER_HANDLER_H

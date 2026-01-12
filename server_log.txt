@@ -1,0 +1,26 @@
+[2026-01-12 09:36:32] New connection established on socket 4
+[2026-01-12 09:37:34] Client disconnected unexpectedly (Socket 4)
+[2026-01-12 09:37:37] Closed connection on socket 4
+[2026-01-12 09:38:10] New connection established on socket 5
+[2026-01-12 09:38:58] Client disconnected unexpectedly (Socket 5)
+[2026-01-12 09:38:58] Closed connection on socket 5
+[2026-01-12 09:39:11] New connection established on socket 4
+[2026-01-12 09:42:51] Client disconnected unexpectedly (Socket 4)
+[2026-01-12 09:42:51] Closed connection on socket 4
+[2026-01-12 09:42:53] New connection established on socket 5
+[2026-01-12 09:45:55] Client disconnected unexpectedly (Socket 5)
+[2026-01-12 09:45:55] Closed connection on socket 5
+[2026-01-12 09:45:56] New connection established on socket 4
+[2026-01-12 09:46:50] Client disconnected unexpectedly (Socket 4)
+[2026-01-12 09:46:50] Closed connection on socket 4
+[2026-01-12 09:46:52] New connection established on socket 5
+[2026-01-12 09:48:25] Client disconnected unexpectedly (Socket 5)
+[2026-01-12 09:48:28] Closed connection on socket 5
+[2026-01-12 09:49:25] New connection established on socket 4
+[2026-01-12 09:53:01] Unknown OpCode: 26
+[2026-01-12 09:53:47] Client disconnected unexpectedly (Socket 4)
+[2026-01-12 09:53:47] Closed connection on socket 4
+[2026-01-12 09:53:49] New connection established on socket 5
+[2026-01-12 09:53:57] User minh anh requested history for Topic 1
+[2026-01-12 09:59:08] Client disconnected unexpectedly (Socket 5)
+[2026-01-12 09:59:08] Closed connection on socket 5
