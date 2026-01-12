@@ -28,7 +28,7 @@ void ClientHandler::requestRegister(const string& user, const string& pass) {
     uint8_t opcode;
     vector<uint8_t> payload;
     if (NetworkUtils::recvPacket(serverSocket, opcode, payload) && opcode == RES_REGISTER) {
-        if (!payload.empty() && payload[0] == REG_SUCCESS) {
+        if (!payload.empty() && payload[0] == REGISTER_OK) {
             cout << ">> Dang ky thanh cong!" << endl;
         } else {
             cout << ">> Dang ky THAT BAI (Tai khoan da ton tai)." << endl;
@@ -50,7 +50,7 @@ bool ClientHandler::requestLogin(const string& user, const string& pass) {
     uint8_t opcode;
     vector<uint8_t> payload;
     if (NetworkUtils::recvPacket(serverSocket, opcode, payload) && opcode == RES_LOGIN) {
-        if (!payload.empty() && payload[0] == LOGIN_SUCCESS) {
+        if (!payload.empty() && payload[0] == LOGIN_OK) {
             cout << ">> Dang nhap thanh cong!" << endl;
             return true;
         } else {
@@ -144,7 +144,18 @@ void ClientHandler::requestPublishBinary(uint32_t topicId, const string& filePat
     builder.addInt((uint32_t)size);
     
     // Ghép dữ liệu binary vào cuối vector payload
-    vector<uint8_t> finalPayload = builder.getData();
+    // Lấy con trỏ dữ liệu Header từ builder
+    const uint8_t* headerData = (const uint8_t*)builder.getData();
+    uint32_t headerSize = builder.getSize();
+
+    // Tạo vector finalPayload chứa cả Header + Nội dung File
+    vector<uint8_t> finalPayload;
+    finalPayload.reserve(headerSize + buffer.size()); // Cấp phát bộ nhớ trước để tối ưu
+
+    // Copy Header vào đầu vector
+    finalPayload.insert(finalPayload.end(), headerData, headerData + headerSize);
+
+    // Copy nội dung File (buffer) vào sau Header
     finalPayload.insert(finalPayload.end(), buffer.begin(), buffer.end());
 
     // 4. Gửi
