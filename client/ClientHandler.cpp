@@ -66,7 +66,6 @@ bool ClientHandler::requestLogin(const string& user, const string& pass) {
 // =======================================================
 
 void ClientHandler::requestGetList(bool myTopics) {
-    // Nếu myTopics = true -> Lấy topic của tôi, ngược lại lấy tất cả
     uint8_t op = myTopics ? REQ_GET_MY_TOPICS : REQ_GET_ALL_TOPICS;
     // Payload rỗng
     NetworkUtils::sendPacket(serverSocket, op, nullptr, 0);
@@ -75,14 +74,14 @@ void ClientHandler::requestGetList(bool myTopics) {
 void ClientHandler::requestCreateTopic(const string& name, const string& desc) {
     PacketBuilder builder;
     builder.addString(name);
-    builder.addString(desc); // Đã thêm Description
+    builder.addString(desc); 
     NetworkUtils::sendPacket(serverSocket, REQ_CREATE_TOPIC, builder.getData(), builder.getSize());
     cout << "[INFO] Da gui yeu cau tao Topic..." << endl;
 }
 
 void ClientHandler::requestDeleteTopic(const std::string& topicName) {
     PacketBuilder builder;
-    builder.addString(topicName); // Gửi String cho khớp với Server
+    builder.addString(topicName); 
     NetworkUtils::sendPacket(serverSocket, REQ_DELETE_TOPIC, builder.getData(), builder.getSize());
 }
 
@@ -136,7 +135,6 @@ void ClientHandler::requestPublishBinary(uint32_t topicId, const string& filePat
     }
 
     // 3. Đóng gói: [TopicID] [Ext] [DataLen] [Data]
-    // Lưu ý: Cấu trúc REQ_PUBLISH_BIN = 26: Payload: [topic_id][ext_len][ext][len][data]
     
     PacketBuilder builder;
     builder.addInt(topicId);

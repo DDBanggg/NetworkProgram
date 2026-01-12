@@ -1,8 +1,8 @@
 # 1. Trình biên dịch và Cờ (Flags)
 CXX      = g++
-# -pthread: Bắt buộc để dùng std::thread
-# -Wall: Hiện cảnh báo để dễ debug
-CXXFLAGS = -std=c++11 -pthread -Wall
+# [QUAN TRỌNG]: Bắt buộc dùng c++17 để hỗ trợ shared_mutex và structured bindings
+# Nếu để c++11 sẽ bị lỗi biên dịch server
+CXXFLAGS = -std=c++17 -pthread -Wall
 
 # 2. Tên file chạy đầu ra (Executable)
 CLIENT_BIN = client_app
@@ -14,11 +14,9 @@ SERVER_BIN = server_app
 COMMON_SRC = common/NetworkUtils.cpp
 
 # Client: Bao gồm Main App + Handler + Common
-# [QUAN TRỌNG]: Phải có client/ClientHandler.cpp để sửa lỗi Linker
 CLIENT_SRC = client/ClientApp.cpp client/ClientHandler.cpp $(COMMON_SRC)
 
 # Server: Bao gồm Main App + Handler + Common
-# [QUAN TRỌNG]: Phải có server/ServerApp.cpp (chứa main)
 SERVER_SRC = server/ServerApp.cpp server/ServerHandler.cpp $(COMMON_SRC)
 
 # 4. Quy tắc biên dịch (Targets)
@@ -34,6 +32,6 @@ $(CLIENT_BIN): $(CLIENT_SRC)
 $(SERVER_BIN): $(SERVER_SRC)
 	$(CXX) $(CXXFLAGS) -o $(SERVER_BIN) $(SERVER_SRC)
 
-# 5. Lệnh dọn dẹp (Gõ 'make clean' để xóa file cũ đi build lại)
+# 5. Lệnh dọn dẹp file build (Gõ 'make clean' để xóa file cũ đi build lại)
 clean:
 	rm -f $(CLIENT_BIN) $(SERVER_BIN)

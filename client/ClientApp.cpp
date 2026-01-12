@@ -5,7 +5,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
-#include <fstream>      // Thêm thư viện file
+#include <fstream>      
 #include <signal.h> 
 #include "ClientHandler.h"
 #include "../common/DataUtils.h" 
@@ -31,7 +31,6 @@ void listenerThread(int socket) {
         PacketReader reader(payload);
 
         switch (opcode) {
-            // --- USE CASE: NHẬN TIN NHẮN TEXT ---
             case NOTIFY_MSG_TEXT: {
                 uint32_t topicId = reader.readInt();
                 string sender = reader.readString();
@@ -40,18 +39,12 @@ void listenerThread(int socket) {
                 break;
             }
 
-            // --- USE CASE: NHẬN FILE (ẢNH/AUDIO) ---
             case NOTIFY_MSG_BIN: {
                 uint32_t topicId = reader.readInt();
                 string sender = reader.readString();
                 string ext = reader.readString();
                 uint32_t dataLen = reader.readInt();
                 
-                // Đọc phần dữ liệu binary còn lại
-                // Lưu ý: PacketReader cần hỗ trợ hàm lấy con trỏ data hiện tại
-                // Ở đây ta giả sử reader đã đọc đến phần data
-                
-                // Tạo tên file unique
                 auto now = std::chrono::system_clock::now();
                 auto now_c = std::chrono::system_clock::to_time_t(now);
                 stringstream ss;
@@ -60,8 +53,6 @@ void listenerThread(int socket) {
 
                 // Ghi ra file
                 ofstream outFile(filename, ios::binary);
-                // Dữ liệu binary nằm ở cuối payload. 
-                // Cách đơn giản nhất: tính offset
                 size_t headerSize = 4 + 4 + sender.length() + 4 + ext.length() + 4; 
                 if (payload.size() > headerSize) {
                     outFile.write((char*)payload.data() + headerSize, payload.size() - headerSize);
@@ -72,7 +63,6 @@ void listenerThread(int socket) {
                 break;
             }
 
-            // --- CÁC PHẢN HỒI KHÁC ---
             case RES_CREATE_TOPIC: {
                 uint8_t status = payload.empty() ? 1 : payload[0]; 
                 if (status == TOPIC_CREATE_OK) {
@@ -89,7 +79,6 @@ void listenerThread(int socket) {
                 break;
             }
             
-            // Xử lý thông tin Topic (TC08, TC10)
             case RES_TOPIC_INFO: {
                 string creator = reader.readString();
                 uint32_t subCount = reader.readInt();
@@ -97,7 +86,6 @@ void listenerThread(int socket) {
                 break;
             }
 
-            // Xử lý danh sách Sub (TC09)
             case RES_TOPIC_SUBS: {
                 uint32_t count = reader.readInt();
                 cout << "\n--- DANH SACH NGUOI DANG KY (" << count << ") ---" << endl;
@@ -132,7 +120,6 @@ void listenerThread(int socket) {
                 uint32_t count = reader.readInt();
                 cout << "\n--- DANH SACH TOPIC (" << count << ") ---" << endl;
                 for (uint32_t i = 0; i < count; ++i) {
-                    // Server giờ gửi: ID, Name, Desc, Creator
                     uint32_t id = reader.readInt(); 
                     string name = reader.readString();
                     string desc = reader.readString();
@@ -151,7 +138,7 @@ void listenerThread(int socket) {
 
             case RES_HISTORY_ITEM: {
                 uint8_t type = 0;
-                memcpy(&type, payload.data(), 1); // Đọc 1 byte type đầu tiên
+                memcpy(&type, payload.data(), 1); 
                 PacketReader historyReader(payload.data() + 1, payload.size() - 1);
                 string sender = historyReader.readString();
                 string msg = historyReader.readString();
@@ -188,7 +175,7 @@ int main(int argc, char const *argv[]) {
     string serverIP = "127.0.0.1"; 
     int serverPort = 8080;
 
-    // Cho phép nhập IP nếu muốn (tùy chọn)
+    // Cho phép nhập IP (tùy chọn)
     cout << "Nhap IP Server (Enter de dung 127.0.0.1): ";
     string inputIP;
     getline(cin, inputIP);
@@ -257,16 +244,15 @@ int main(int argc, char const *argv[]) {
                             case 3:
                                 cout << "Ten Topic: "; getline(cin, buf);
                                 cout << "Mo ta: "; getline(cin, desc);
-                                // LƯU Ý: Bạn cần cập nhật ClientHandler::requestCreateTopic để nhận 2 tham số
                                 handler.requestCreateTopic(buf, desc); 
                                 break;
                             case 4: {
-    string tName;
-    cout << "Ten Topic xoa: "; 
-    getline(cin, tName); // Nhập tên thay vì ID
-    handler.requestDeleteTopic(tName); // Cần sửa hàm này nhận string
-    break;
-}
+                                string tName;
+                                cout << "Ten Topic xoa: "; 
+                                getline(cin, tName); 
+                                handler.requestDeleteTopic(tName); 
+                                break;
+                            }
                             case 5:
                                 cout << "ID Topic Sub: "; cin >> tid; cin.ignore();
                                 handler.requestSubscribe(tid);
@@ -280,20 +266,20 @@ int main(int argc, char const *argv[]) {
                                 cout << "Noi dung: "; getline(cin, buf);
                                 handler.requestPublish(tid, buf);
                                 break;
-                            case 8: // Gửi File
+                            case 8: 
                                 cout << "ID Topic: "; cin >> tid; cin.ignore();
                                 cout << "Duong dan File (VD: test.jpg): "; getline(cin, buf);
                                 handler.requestPublishBinary(tid, buf);
                                 break;
-                            case 9: // Lịch sử
+                            case 9: 
                                 cout << "ID Topic: "; cin >> tid; cin.ignore();
                                 handler.requestHistory(tid);
                                 break;
-                            case 10: // Info
+                            case 10: 
                                 cout << "ID Topic: "; cin >> tid; cin.ignore();
                                 handler.requestTopicInfo(tid);
                                 break;
-                            case 11: // List Subs
+                            case 11: 
                                 cout << "ID Topic: "; cin >> tid; cin.ignore();
                                 handler.requestTopicSubs(tid);
                                 break;

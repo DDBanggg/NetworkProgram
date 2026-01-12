@@ -5,9 +5,11 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <signal.h>
-#include <map>           // <--- Thêm header này
-#include <shared_mutex>  // <--- Thêm header này
-#include <sys/stat.h>    // <--- Thêm để dùng mkdir
+#include <map>          
+#include <shared_mutex>  
+#include <sys/stat.h>    
+#include <cstdio>
+#include <fstream>
 #include "ServerHandler.h"
 
 using namespace std;
@@ -29,10 +31,21 @@ void connectionHandler(int clientSock) {
     // Khi run() kết thúc (client disconnect), handler tự hủy -> đóng socket
 }
 
+// Hàm dọn dẹp dữ liệu 
+void cleanSessionData() {
+    // 1. Làm rỗng các file text (Topics, History, Log)
+    std::ofstream f1("data/topics.txt", std::ios::trunc); f1.close();
+    std::ofstream f2("topic_history.txt", std::ios::trunc); f2.close();
+    std::ofstream f3("server_log.txt", std::ios::trunc); f3.close();
+
+    // 2. Xóa các file trong thư mục server_storage
+    int ret = system("rm -f server_storage/*");
+}
+
 int main() {
     signal(SIGPIPE, SIG_IGN);
 
-    // --- TẠO THƯ MỤC DỮ LIỆU NẾU CHƯA CÓ (Tránh lỗi file not found) ---
+    // --- TẠO THƯ MỤC DỮ LIỆU NẾU CHƯA CÓ ---
     #ifdef _WIN32
         _mkdir("data");
         _mkdir("server_storage");
@@ -41,6 +54,8 @@ int main() {
         mkdir("server_storage", 0777);
     #endif
     // ------------------------------------------------------------------
+
+    cleanSessionData(); // Dọn dẹp dữ liệu cũ
 
     ServerHandler::loadData();
 

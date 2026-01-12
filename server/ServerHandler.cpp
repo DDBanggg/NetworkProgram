@@ -43,7 +43,7 @@ static uint32_t globalTopicIdCounter = 0;
 
 // Map: TopicID -> Set<Socket>
 static map<uint32_t, set<int>> topicSubscribers;
-static shared_mutex subMutex; // Tên chuẩn là subMutex
+static shared_mutex subMutex; 
 
 // Mutex cho file log
 static std::mutex logMutex;      
@@ -82,7 +82,6 @@ void saveUserToFile(const string& u, const string& p) {
     }
 }
 
-// FIX LỖI: Thêm tham số 'desc' vào hàm này
 void saveTopicToFile(uint32_t id, const string& name, const string& desc, const string& creator) {
     ofstream f("data/topics.txt", ios::app);
     if (f.is_open()) { 
@@ -97,7 +96,7 @@ static void broadcastMessage(uint32_t topicId, const string& senderName, const s
     builder.addString(senderName); 
     builder.addString(message);    
 
-    std::shared_lock<std::shared_mutex> lock(subMutex); // Dùng subMutex
+    std::shared_lock<std::shared_mutex> lock(subMutex); 
     auto it = topicSubscribers.find(topicId);
     if (it != topicSubscribers.end()) {
         const set<int>& subscribers = it->second;
@@ -138,7 +137,6 @@ ServerHandler::ServerHandler(int socket) : clientSocket(socket) {
 }
 
 ServerHandler::~ServerHandler() { 
-    // FIX LOGIC: Xóa User khỏi danh sách Online khi ngắt kết nối
     if (isLogged) {
         std::unique_lock<std::shared_mutex> lock(clientsMutex);
         onlineUsers.erase(clientSocket);
@@ -206,8 +204,6 @@ void ServerHandler::run() {
             case REQ_PUBLISH_TEXT: handlePublishText(payload.data(), payload.size()); break;
             case REQ_PUBLISH_BIN: handlePublishBinary(payload.data(), payload.size()); break;
             case REQ_HISTORY: handleGetHistory(payload.data(), payload.size()); break;
-            
-            // FIX DUPLICATE: Chỉ giữ 1 case cho mỗi OpCode
             case REQ_TOPIC_INFO: {
                 PacketReader reader(payload.data(), payload.size());
                 uint32_t tId = reader.readInt();
@@ -220,7 +216,6 @@ void ServerHandler::run() {
                 handleGetTopicSubs(tId);
                 break;
             }
-            
             default:
                 string err = "Unknown OpCode: " + to_string((int)opcode);
                 cout << err << endl;
@@ -265,7 +260,6 @@ void ServerHandler::handleLogin(const void* payloadData, uint32_t len) {
             this->currentUser = username;
             this->isLogged = true;
             
-            // FIX LOGIC: Cập nhật vào danh sách Online
             {
                 unique_lock<shared_mutex> uLock(clientsMutex);
                 onlineUsers[clientSocket] = username;
@@ -293,7 +287,6 @@ void ServerHandler::handleCreateTopic(const void* payloadData, uint32_t len) {
             newTopicId = globalTopicIdCounter;
             Topic t = {newTopicId, topicName, topicDesc, this->currentUser};
             topicDB[topicName] = t;
-            // FIX: Truyền đủ 4 tham số
             saveTopicToFile(newTopicId, topicName, topicDesc, this->currentUser);
             status = TOPIC_CREATE_OK;
         }
@@ -307,12 +300,7 @@ void ServerHandler::handleCreateTopic(const void* payloadData, uint32_t len) {
 void ServerHandler::handleDeleteTopic(const void* payloadData, uint32_t len) {
     if (!isLogged) return;
     PacketReader reader(payloadData, len);
-    string topicName = reader.readString(); // Lưu ý: Client của bạn gửi ID, nhưng Server đọc Name -> Cần khớp
-    // NOTE: Theo ClientApp, bạn đang gửi topicId (Int) ở menu Xóa. 
-    // Nhưng ServerHandler đang đọc String. Logic này sẽ lỗi nếu bạn không sửa Client.
-    // Tuy nhiên để an toàn, tôi giữ nguyên code cũ của bạn vì việc sửa logic ID/Name lớn hơn.
-    // Nếu Client gửi ID, Server đọc string sẽ ra rác. 
-    // Tạm thời giả định bạn đã sửa ClientHandler::requestDeleteTopic gửi string name.
+    string topicName = reader.readString(); 
     
     uint8_t status;
     {
@@ -354,7 +342,6 @@ void ServerHandler::handleGetMyTopics() {
         builder.addInt(count);
         for (auto const& [key, val] : topicDB) {
             if (val.creator == this->currentUser) {
-                // Sửa cho khớp cấu trúc (ID, Name, Desc, Creator)
                 builder.addInt(val.id);
                 builder.addString(val.name);
                 builder.addString(val.description);
@@ -466,7 +453,7 @@ void ServerHandler::handleGetHistory(const void* payloadData, uint32_t len) {
     // 2. Gửi từng RES_HISTORY_ITEM (OpCode 32)
     for (auto const& item : historyItems) {
         PacketBuilder itemBuilder;
-        uint8_t msgType = 1; // Giả sử 1 là Text
+        uint8_t msgType = 1; //1 là Text
         itemBuilder.addBlob(&msgType, 1); 
         // Payload của item: [SenderLen][Sender][MsgLen][Msg]
         itemBuilder.addString(item.first);  // Sender
@@ -492,7 +479,6 @@ void ServerHandler::handleGetTopicInfo(uint32_t topicId) {
         }
     }
     {
-        // FIX: Đổi subscribersMutex -> subMutex (như đã khai báo ở trên)
         shared_lock<shared_mutex> lock(subMutex);
         if (topicSubscribers.find(topicId) != topicSubscribers.end()) {
             subCount = topicSubscribers[topicId].size();
@@ -516,7 +502,6 @@ void ServerHandler::handleGetTopicSubs(uint32_t topicId) {
     }
 
     {
-        // FIX: Cập nhật link tới biến toàn cục onlineUsers
         shared_lock<shared_mutex> lock(clientsMutex); 
         for (int sock : socketIds) {
             if (onlineUsers.count(sock)) {

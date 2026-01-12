@@ -1,4 +1,0 @@
-1|h√octap|alice
-2|hoc tap|alice
-3|hoc tap 1|alice
-4|hoc hanh|minh anh

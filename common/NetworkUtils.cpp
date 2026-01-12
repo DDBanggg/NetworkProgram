@@ -7,7 +7,7 @@
 #include <cstring> 
 #include <iostream>
 #include <vector>
-#include <iomanip> // Thư viện để in Hex
+#include <iomanip> 
 
 using namespace std;
 
