@@ -80,9 +80,9 @@ void ClientHandler::requestCreateTopic(const string& name, const string& desc) {
     cout << "[INFO] Da gui yeu cau tao Topic..." << endl;
 }
 
-void ClientHandler::requestDeleteTopic(uint32_t topicId) {
+void ClientHandler::requestDeleteTopic(const std::string& topicName) {
     PacketBuilder builder;
-    builder.addInt(topicId); // Gửi ID dạng Int
+    builder.addString(topicName); // Gửi String cho khớp với Server
     NetworkUtils::sendPacket(serverSocket, REQ_DELETE_TOPIC, builder.getData(), builder.getSize());
 }
 
