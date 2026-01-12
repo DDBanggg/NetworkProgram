@@ -238,12 +238,13 @@ int main(int argc, char const *argv[]) {
                                 // LƯU Ý: Bạn cần cập nhật ClientHandler::requestCreateTopic để nhận 2 tham số
                                 handler.requestCreateTopic(buf, desc); 
                                 break;
-                            case 4:
-                                cout << "ID Topic xoa: "; cin >> tid; cin.ignore();
-                                // Lưu ý: Code cũ bạn dùng tên, giờ nên dùng ID cho chuẩn, hoặc giữ nguyên tên tùy logic Server
-                                // Server OpCode 10 dùng TopicID. Bạn cần sửa ClientHandler::requestDeleteTopic nhận int
-                                handler.requestDeleteTopic(tid);
-                                break;
+                            case 4: {
+    string tName;
+    cout << "Ten Topic xoa: "; 
+    getline(cin, tName); // Nhập tên thay vì ID
+    handler.requestDeleteTopic(tName); // Cần sửa hàm này nhận string
+    break;
+}
                             case 5:
                                 cout << "ID Topic Sub: "; cin >> tid; cin.ignore();
                                 handler.requestSubscribe(tid);

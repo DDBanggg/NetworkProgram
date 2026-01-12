@@ -18,7 +18,7 @@ public:
     // --- 2. Nhóm Topic (Gửi lệnh, kết quả nhận ở ListenerThread) ---
     void requestGetList(bool myTopics);
     void requestCreateTopic(const std::string& name, const std::string& desc);
-    void requestDeleteTopic(uint32_t topicId);
+    void requestDeleteTopic(const std::string& topicName);
 
     // --- 3. Nhóm Tương tác (Gửi lệnh) ---
     void requestSubscribe(uint32_t topicId);
