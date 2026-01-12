@@ -60,9 +60,9 @@ int main() {
     // 5. Vòng lặp chấp nhận kết nối
     while (true) {
         if ((newSocket = accept(serverSocket, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
-            perror("Accept failed");
-            continue;
-        }
+        perror("Accept failed");
+        continue;
+    }
 
         // Cài đặt Timeout 5 phút (300 giây) cho socket này
         struct timeval tv;
