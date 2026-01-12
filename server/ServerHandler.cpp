@@ -443,27 +443,39 @@ void ServerHandler::handleGetHistory(const void* payloadData, uint32_t len) {
     PacketReader reader(payloadData, len);
     uint32_t reqTopicId = reader.readInt();
 
-    std::lock_guard<std::mutex> lock(historyMutex);
-    ifstream f("topic_history.txt");
-    if (f.is_open()) {
-        string line;
-        while (getline(f, line)) {
-            vector<string> parts = split(line, '|');
-            if (parts.size() >= 3) {
-                try {
-                    uint32_t tId = stoi(parts[0]);
-                    if (tId == reqTopicId) {
-                        PacketBuilder builder;
-                        builder.addInt(tId);
-                        builder.addString(parts[1]);
-                        builder.addString("[HISTORY] " + parts[2]);
-                        NetworkUtils::sendPacket(clientSocket, NOTIFY_MSG_TEXT, builder.getData(), builder.getSize());
-                    }
-                } catch (...) {}
+    vector<pair<string, string>> historyItems;
+    {
+        std::lock_guard<std::mutex> lock(historyMutex);
+        ifstream f("topic_history.txt");
+        if (f.is_open()) {
+            string line;
+            while (getline(f, line)) {
+                vector<string> parts = split(line, '|');
+                if (parts.size() >= 3 && (uint32_t)stoi(parts[0]) == reqTopicId) {
+                    historyItems.push_back({parts[1], parts[2]});
+                }
             }
         }
-        f.close();
     }
+
+    // 1. Gửi RES_HISTORY_START (OpCode 31)
+    PacketBuilder startBuilder;
+    startBuilder.addInt((uint32_t)historyItems.size());
+    NetworkUtils::sendPacket(clientSocket, RES_HISTORY_START, startBuilder.getData(), startBuilder.getSize());
+
+    // 2. Gửi từng RES_HISTORY_ITEM (OpCode 32)
+    for (auto const& item : historyItems) {
+        PacketBuilder itemBuilder;
+        uint8_t msgType = 1; // Giả sử 1 là Text
+        itemBuilder.addBlob(&msgType, 1); 
+        // Payload của item: [SenderLen][Sender][MsgLen][Msg]
+        itemBuilder.addString(item.first);  // Sender
+        itemBuilder.addString("[HISTORY] " + item.second); // Nội dung
+        NetworkUtils::sendPacket(clientSocket, RES_HISTORY_ITEM, itemBuilder.getData(), itemBuilder.getSize());
+    }
+
+    // 3. Gửi RES_HISTORY_END (OpCode 33)
+    NetworkUtils::sendPacket(clientSocket, RES_HISTORY_END, nullptr, 0);
 }
 
 void ServerHandler::handleGetTopicInfo(uint32_t topicId) {
