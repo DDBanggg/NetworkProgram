@@ -29,7 +29,7 @@ enum OpCode : uint8_t {
     // B. Nhóm Quản lý Topic (Producer) 
     REQ_GET_ALL_TOPICS  = 6,  // [C->S] Lấy list topic. Payload: (Rỗng)
     RES_GET_ALL_TOPICS  = 7,  // [S->C] Trả về list. Payload: [count] + List<Topic>
-    REQ_CREATE_TOPIC    = 8,  // [C->S] Tạo topic mới. Payload: [name_len][name]
+    REQ_CREATE_TOPIC    = 8,  // [C->S] Tạo topic mới. Payload: [name_len][name][desc_len][desc]
     RES_CREATE_TOPIC    = 9,  // [S->C] Trả ID topic mới. Payload: [status][topic_id]
     REQ_DELETE_TOPIC    = 10, // [C->S] Xóa topic. Payload: [topic_id]
     RES_DELETE_TOPIC    = 11, // [S->C] KQ xóa. Payload: [status]

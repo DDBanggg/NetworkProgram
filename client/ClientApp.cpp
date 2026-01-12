@@ -5,14 +5,15 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
+#include <fstream>      // Thêm thư viện file
 #include <signal.h> 
 #include "ClientHandler.h"
 #include "../common/DataUtils.h" 
 #include "../common/protocol.h"
 #include "../common/NetworkUtils.h"
-#include <fstream>
-#include <vector>
-#include <chrono> // Dùng cho timestamp
+#include <chrono>
+#include <ctime>
+
 using namespace std;
 
 // --- HÀM CHẠY NGẦM NHẬN TIN NHẮN TỪ SERVER ---
@@ -21,7 +22,6 @@ void listenerThread(int socket) {
         uint8_t opcode;
         vector<uint8_t> payload;
         
-        // Nhận packet (Header + Payload)
         if (!NetworkUtils::recvPacket(socket, opcode, payload)) {
             cout << "\n[SYSTEM] Mat ket noi Server!" << endl;
             exit(0); 
@@ -30,7 +30,7 @@ void listenerThread(int socket) {
         PacketReader reader(payload);
 
         switch (opcode) {
-            // ... (Các case cũ giữ nguyên) ...
+            // --- USE CASE: NHẬN TIN NHẮN TEXT ---
             case NOTIFY_MSG_TEXT: {
                 uint32_t topicId = reader.readInt();
                 string sender = reader.readString();
@@ -39,40 +39,116 @@ void listenerThread(int socket) {
                 break;
             }
 
-            // --- CASE MỚI: NHẬN FILE ---
-            case NOTIFY_MSG_BIN: { // OpCode 29
-                // Protocol: [TopicID] [Sender] [Ext] [Data]
+            // --- USE CASE: NHẬN FILE (ẢNH/AUDIO) ---
+            case NOTIFY_MSG_BIN: {
                 uint32_t topicId = reader.readInt();
                 string sender = reader.readString();
                 string ext = reader.readString();
-                string data = reader.readString(); // Đọc binary data vào string
+                uint32_t dataLen = reader.readInt();
+                
+                // Đọc phần dữ liệu binary còn lại
+                // Lưu ý: PacketReader cần hỗ trợ hàm lấy con trỏ data hiện tại
+                // Ở đây ta giả sử reader đã đọc đến phần data
+                
+                // Tạo tên file unique
+                auto now = std::chrono::system_clock::now();
+                auto now_c = std::chrono::system_clock::to_time_t(now);
+                stringstream ss;
+                ss << "received_" << now_c << ext;
+                string filename = ss.str();
 
-                // Tạo tên file output: received_<timestamp>.<ext>
-                auto now = std::chrono::system_clock::now().time_since_epoch();
-                long long timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-                string outFileName = "received_" + to_string(timestamp) + "." + ext;
+                // Ghi ra file
+                ofstream outFile(filename, ios::binary);
+                // Dữ liệu binary nằm ở cuối payload. 
+                // Cách đơn giản nhất: tính offset
+                size_t headerSize = 4 + 4 + sender.length() + 4 + ext.length() + 4; 
+                if (payload.size() > headerSize) {
+                    outFile.write((char*)payload.data() + headerSize, payload.size() - headerSize);
+                }
+                outFile.close();
 
-                // Ghi ra đĩa
-                ofstream outFile(outFileName, ios::binary);
-                if (outFile.is_open()) {
-                    outFile.write(data.data(), data.size());
-                    outFile.close();
-                    cout << "\n>>> [Topic " << topicId << "] " << sender 
-                         << " sent a file: " << outFileName 
-                         << " (" << data.size() << " bytes)" << endl;
+                cout << "\n>>> [Topic " << topicId << "] " << sender << " da gui 1 file: " << filename << endl;
+                break;
+            }
+
+            // --- CÁC PHẢN HỒI KHÁC ---
+            case RES_CREATE_TOPIC: {
+                uint8_t status = payload.empty() ? 1 : payload[0]; 
+                if (status == TOPIC_CREATE_OK) {
+                    // ID nằm sau byte status
+                    if (payload.size() >= 5) {
+                        uint32_t newId;
+                        memcpy(&newId, &payload[1], 4);
+                        newId = ntohl(newId); // Chuyển Endian
+                        cout << "\n[INFO] Tao Topic THANH CONG! ID: " << newId << endl;
+                    }
                 } else {
-                    cout << "\n>>> [ERROR] Khong the luu file: " << outFileName << endl;
+                    cout << "\n[ERROR] Tao Topic THAT BAI." << endl;
                 }
                 break;
             }
             
-            // ... (Các case khác giữ nguyên)
+            // Xử lý thông tin Topic (TC08, TC10)
+            case RES_TOPIC_INFO: {
+                string creator = reader.readString();
+                uint32_t subCount = reader.readInt();
+                cout << "\n[INFO] Creator: " << creator << " | Subscribers: " << subCount << endl;
+                break;
+            }
+
+            // Xử lý danh sách Sub (TC09)
+            case RES_TOPIC_SUBS: {
+                uint32_t count = reader.readInt();
+                cout << "\n--- DANH SACH NGUOI DANG KY (" << count << ") ---" << endl;
+                for(uint32_t i=0; i<count; i++) {
+                    cout << "- " << reader.readString() << endl;
+                }
+                break;
+            }
+
+            case RES_DELETE_TOPIC: {
+                uint8_t status = payload.empty() ? 1 : payload[0];
+                if (status == TOPIC_DELETE_OK) cout << "\n[INFO] Xoa Topic THANH CONG!" << endl;
+                else cout << "\n[ERROR] Xoa Topic THAT BAI (Khong phai chu so huu)." << endl;
+                break;
+            }
+
+            case RES_SUBSCRIBE: {
+                uint8_t status = payload.empty() ? 1 : payload[0];
+                if (status == SUB_OK) cout << "\n[INFO] Dang ky theo doi THANH CONG!" << endl;
+                else cout << "\n[ERROR] Dang ky THAT BAI." << endl;
+                break;
+            }
+
+            case RES_UNSUBSCRIBE: {
+                 cout << "\n[INFO] Huy dang ky THANH CONG!" << endl;
+                 break;
+            }
+
+            case RES_GET_ALL_TOPICS:
+            case RES_GET_MY_TOPICS: {
+                uint32_t count = reader.readInt();
+                cout << "\n--- DANH SACH TOPIC (" << count << ") ---" << endl;
+                for (uint32_t i = 0; i < count; ++i) {
+                    // Server giờ gửi: ID, Name, Desc, Creator
+                    uint32_t id = reader.readInt(); 
+                    string name = reader.readString();
+                    string desc = reader.readString();
+                    string creator = reader.readString();
+                    cout << "#" << id << ". [" << name << "] - " << desc << " (by " << creator << ")" << endl;
+                }
+                cout << "-----------------------------------" << endl;
+                break;
+            }
+
+            default:
+                break;
         }
-        
-        // FIX UI GLITCH: In lại dấu nhắc sau khi hiện thông báo
+
         cout << "Lua chon: " << flush;
     }
 }
+// -----------------------------------------------
 
 void showMenu() {
     cout << "\n=== MENU CHINH ===" << endl;
@@ -82,84 +158,18 @@ void showMenu() {
     cout << "Chon: ";
 }
 
-// --- CHỨC NĂNG GỬI FILE (PRODUCER) ---
-void uploadFile(int socket, uint32_t topicId, const string& filePath) {
-    // 1. Mở file chế độ Binary
-    ifstream file(filePath, ios::binary | ios::ate); // ios::ate để con trỏ ở cuối file (lấy size)
-    if (!file.is_open()) {
-        cout << ">> [ERROR] Khong tim thay file: " << filePath << endl;
-        return;
-    }
-
-    // 2. Lấy kích thước file
-    streamsize size = file.tellg();
-    file.seekg(0, ios::beg); // Quay về đầu để đọc
-
-    if (size <= 0) {
-        cout << ">> [ERROR] File rong!" << endl;
-        return;
-    }
-    
-    // Giới hạn file 10MB (tuỳ chọn)
-    if (size > 10 * 1024 * 1024) { 
-        cout << ">> [ERROR] File qua lon (>10MB)!" << endl;
-        return;
-    }
-
-    // 3. Đọc dữ liệu vào buffer
-    vector<char> buffer(size);
-    if (!file.read(buffer.data(), size)) {
-        cout << ">> [ERROR] Loi doc file!" << endl;
-        return;
-    }
-    file.close();
-
-    // 4. Lấy đuôi file (Extension)
-    string extension = "bin";
-    size_t dotPos = filePath.find_last_of(".");
-    if (dotPos != string::npos) {
-        extension = filePath.substr(dotPos + 1);
-    }
-
-    // 5. Đóng gói Packet (REQ_PUBLISH_BIN - 26)
-    // Cấu trúc: [TopicID 4B] + [Ext_Len 4B + Ext] + [Data_Len 4B + Data]
-    PacketBuilder builder;
-    builder.addInt(topicId);
-    builder.addString(extension);
-    
-    // Chuyển vector<char> sang string để dùng addString (DataUtils hỗ trợ safe-binary string)
-    // addString sẽ tự động thêm 4 byte độ dài trước dữ liệu
-    string dataStr(buffer.begin(), buffer.end()); 
-    builder.addString(dataStr);
-
-    // 6. Gửi đi
-    if (NetworkUtils::sendPacket(socket, REQ_PUBLISH_BIN, builder.getData(), builder.getSize())) {
-        cout << ">> [INFO] Da gui file " << filePath << " (" << size << " bytes)." << endl;
-    } else {
-        cout << ">> [ERROR] Loi gui packet!" << endl;
-    }
-}
-
-void requestHistory(int socket, uint32_t topicId) {
-    // 1. Đóng gói gói tin REQ_HISTORY (OpCode 30)
-    // Payload: [TopicID 4B]
-    PacketBuilder builder;
-    builder.addInt(topicId);
-
-    // 2. Gửi gói tin lên Server
-    if (NetworkUtils::sendPacket(socket, REQ_HISTORY, builder.getData(), builder.getSize())) {
-        cout << ">> [INFO] Da gui yeu cau lay lich su Topic " << topicId << endl;
-    } else {
-        cout << ">> [ERROR] Khong the gui yeu cau (Mat ket noi?)" << endl;
-    }
-}
-
 int main(int argc, char const *argv[]) {
     signal(SIGPIPE, SIG_IGN); 
 
-    // CẤU HÌNH IP SERVER 
-    string serverIP = "172.18.38.103"; 
+    // CẤU HÌNH IP LOCALHOST
+    string serverIP = "127.0.0.1"; 
     int serverPort = 8080;
+
+    // Cho phép nhập IP nếu muốn (tùy chọn)
+    cout << "Nhap IP Server (Enter de dung 127.0.0.1): ";
+    string inputIP;
+    getline(cin, inputIP);
+    if (!inputIP.empty()) serverIP = inputIP;
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) return -1;
@@ -196,7 +206,7 @@ int main(int argc, char const *argv[]) {
                 cout << "Pass: "; getline(cin, p);
                 
                 if (handler.requestLogin(u, p)) {
-                    // Kích hoạt Listener ngay sau khi Login thành công
+                    // Kích hoạt Listener
                     std::thread t(listenerThread, sock);
                     t.detach(); 
 
@@ -206,84 +216,69 @@ int main(int argc, char const *argv[]) {
                         cout << "1. Xem DS Topic\t 2. Topic cua toi" << endl;
                         cout << "3. Tao Topic\t 4. Xoa Topic" << endl;
                         cout << "5. Subscribe\t 6. Unsubscribe" << endl;
-                        cout << "7. Chat Text\t 8. Gui File" << endl;
-                        cout << "9. Xem Lich Su (History)" << endl; // <--- Thêm dòng này
-                        cout << "0. Dang xuat" << endl;
+                        cout << "7. Gui Tin (Text)\t 8. Gui File (Anh/Audio)" << endl;
+                        cout << "9. Lich Su\t 10. Thong tin Topic" << endl;
+                        cout << "11. Xem Subs\t 0. Dang xuat" << endl;
                         cout << "Lua chon: ";
+
                         int subChoice;
                         if (!(cin >> subChoice)) { cin.clear(); cin.ignore(10000, '\n'); continue; }
                         cin.ignore();
 
-                        string buf; uint32_t tid;
+                        string buf, desc; 
+                        uint32_t tid;
+                        
                         switch (subChoice) {
                             case 1: handler.requestGetList(false); break;
                             case 2: handler.requestGetList(true); break;
                             case 3:
-                                cout << "Ten Topic moi: "; getline(cin, buf);
-                                handler.requestCreateTopic(buf);
+                                cout << "Ten Topic: "; getline(cin, buf);
+                                cout << "Mo ta: "; getline(cin, desc);
+                                // LƯU Ý: Bạn cần cập nhật ClientHandler::requestCreateTopic để nhận 2 tham số
+                                handler.requestCreateTopic(buf, desc); 
                                 break;
                             case 4:
-                                cout << "Ten Topic xoa: "; getline(cin, buf);
-                                handler.requestDeleteTopic(buf);
+                                cout << "ID Topic xoa: "; cin >> tid; cin.ignore();
+                                // Lưu ý: Code cũ bạn dùng tên, giờ nên dùng ID cho chuẩn, hoặc giữ nguyên tên tùy logic Server
+                                // Server OpCode 10 dùng TopicID. Bạn cần sửa ClientHandler::requestDeleteTopic nhận int
+                                handler.requestDeleteTopic(tid);
                                 break;
                             case 5:
-                                cout << "ID Topic muon Sub: "; cin >> tid; cin.ignore();
+                                cout << "ID Topic Sub: "; cin >> tid; cin.ignore();
                                 handler.requestSubscribe(tid);
                                 break;
                             case 6:
-                                cout << "ID Topic muon Unsub: "; cin >> tid; cin.ignore();
+                                cout << "ID Topic Unsub: "; cin >> tid; cin.ignore();
                                 handler.requestUnsubscribe(tid);
                                 break;
                             case 7: 
-                                cout << "--- PUBLISH MESSAGE ---" << endl;
-                                cout << "Nhap ID Topic muon gui tin: "; 
-                                if (!(cin >> tid)) {
-                                    cin.clear(); cin.ignore(10000, '\n');
-                                    cout << ">> ID khong hop le!" << endl;
-                                    break;
-                                }
-                                cin.ignore(); // Xóa bộ đệm sau khi nhập số
-
-                                cout << "Nhap noi dung tin nhan: "; 
-                                getline(cin, buf);
-
-                                // Gọi Handler để đóng gói và gửi đi
-                                if (handler.requestPublish(tid, buf)) {
-                                    cout << ">> Da gui lenh Publish!" << endl;
-                                } else {
-                                    cout << ">> Loi gui tin (Mat ket noi?)" << endl;
-                                }
+                                cout << "ID Topic: "; cin >> tid; cin.ignore();
+                                cout << "Noi dung: "; getline(cin, buf);
+                                handler.requestPublish(tid, buf);
                                 break;
-                            case 8: // Thêm case mới để gửi file
-                                cout << "--- UPLOAD FILE ---" << endl;
-                                cout << "Nhap ID Topic: "; 
-                                if (!(cin >> tid)) { cin.clear(); cin.ignore(10000, '\n'); break; }
-                                cin.ignore();
-
-                                cout << "Nhap duong dan file (VD: image.png): ";
-                                getline(cin, buf);
-                                
-                                // Gọi hàm uploadFile vừa viết
-                                uploadFile(sock, tid, buf);
+                            case 8: // Gửi File
+                                cout << "ID Topic: "; cin >> tid; cin.ignore();
+                                cout << "Duong dan File (VD: test.jpg): "; getline(cin, buf);
+                                handler.requestPublishBinary(tid, buf);
                                 break;
-                            case 9: // REQUEST HISTORY ---
-                                cout << "Nhap ID Topic muon xem lich su: ";
-                                if (!(cin >> tid)) {
-                                    cin.clear(); cin.ignore(10000, '\n');
-                                    break;
-                                }
-                                cin.ignore(); // Xóa bộ đệm
-
-                                // Gọi hàm vừa viết
-                                requestHistory(sock, tid);
+                            case 9: // Lịch sử
+                                cout << "ID Topic: "; cin >> tid; cin.ignore();
+                                handler.requestHistory(tid);
+                                break;
+                            case 10: // Info
+                                cout << "ID Topic: "; cin >> tid; cin.ignore();
+                                handler.requestTopicInfo(tid);
+                                break;
+                            case 11: // List Subs
+                                cout << "ID Topic: "; cin >> tid; cin.ignore();
+                                handler.requestTopicSubs(tid);
                                 break;
                             case 0:
                                 loggedIn = false;
-                                cout << ">> Dang xuat... (Vui long restart app de dang nhap lai)" << endl;
                                 exit(0);
                                 break;
                         }
-                        this_thread::sleep_for(chrono::milliseconds(100));
+                        this_thread::sleep_for(chrono::milliseconds(200));
                     }
                 }
                 break;
@@ -293,4 +288,3 @@ int main(int argc, char const *argv[]) {
     close(sock);
     return 0;
 }
-

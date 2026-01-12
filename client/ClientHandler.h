@@ -2,7 +2,6 @@
 #define CLIENT_HANDLER_H
 
 #include <string>
-#include <vector>
 #include <cstdint>
 
 class ClientHandler {
@@ -10,22 +9,29 @@ private:
     int serverSocket;
 
 public:
-    explicit ClientHandler(int socket);
-    ~ClientHandler();
+    ClientHandler(int socket);
 
-    // --- SPRINT 1: AUTH ---
-    bool requestRegister(const std::string& username, const std::string& password);
-    bool requestLogin(const std::string& username, const std::string& password);
+    // --- 1. Nhóm Tài Khoản (Có chờ phản hồi) ---
+    void requestRegister(const std::string& user, const std::string& pass);
+    bool requestLogin(const std::string& user, const std::string& pass);
 
-    // --- SPRINT 2: TOPIC & CHAT ---
-    bool requestCreateTopic(std::string topicName);
-    bool requestDeleteTopic(std::string topicName);
-    void requestGetList(bool isMyTopic);
+    // --- 2. Nhóm Topic (Gửi lệnh, kết quả nhận ở ListenerThread) ---
+    void requestGetList(bool myTopics);
+    void requestCreateTopic(const std::string& name, const std::string& desc);
+    void requestDeleteTopic(uint32_t topicId);
 
-    // --- SPRINT 3
-    bool requestSubscribe(uint32_t topicId);
-    bool requestUnsubscribe(uint32_t topicId);
-    bool requestPublish(uint32_t topicId, const std::string& message);
+    // --- 3. Nhóm Tương tác (Gửi lệnh) ---
+    void requestSubscribe(uint32_t topicId);
+    void requestUnsubscribe(uint32_t topicId);
+    
+    // --- 4. Nhóm Gửi Tin ---
+    void requestPublish(uint32_t topicId, const std::string& message);
+    void requestPublishBinary(uint32_t topicId, const std::string& filePath);
+
+    // --- 5. Nhóm Tra cứu & History ---
+    void requestHistory(uint32_t topicId);
+    void requestTopicInfo(uint32_t topicId);
+    void requestTopicSubs(uint32_t topicId);
 };
 
-#endif 
+#endif

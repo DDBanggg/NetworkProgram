@@ -5,11 +5,21 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <signal.h>
+#include <map>           // <--- Thêm header này
+#include <shared_mutex>  // <--- Thêm header này
+#include <sys/stat.h>    // <--- Thêm để dùng mkdir
 #include "ServerHandler.h"
 
 using namespace std;
 
 #define PORT 8080
+
+// =================================================================
+// ĐỊNH NGHĨA BIẾN TOÀN CỤC (BẮT BUỘC ĐỂ LINK VỚI SERVERHANDLER)
+// =================================================================
+std::map<int, std::string> onlineUsers; 
+std::shared_mutex clientsMutex; 
+// =================================================================
 
 // Hàm trung gian để chạy Handler trong luồng mới
 void connectionHandler(int clientSock) {
@@ -21,6 +31,16 @@ void connectionHandler(int clientSock) {
 
 int main() {
     signal(SIGPIPE, SIG_IGN);
+
+    // --- TẠO THƯ MỤC DỮ LIỆU NẾU CHƯA CÓ (Tránh lỗi file not found) ---
+    #ifdef _WIN32
+        _mkdir("data");
+        _mkdir("server_storage");
+    #else
+        mkdir("data", 0777);
+        mkdir("server_storage", 0777);
+    #endif
+    // ------------------------------------------------------------------
 
     ServerHandler::loadData();
 
@@ -34,7 +54,7 @@ int main() {
         return -1;
     }
 
-    // Tùy chọn để tái sử dụng cổng ngay sau khi tắt server (tránh lỗi Address already in use)
+    // Tùy chọn để tái sử dụng cổng ngay sau khi tắt server
     int opt = 1;
     setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
@@ -55,16 +75,16 @@ int main() {
         return -1;
     }
 
-    cout << "Truong Anh dang lang nghe tai port " << PORT << "...\n";
+    cout << "Server dang lang nghe tai port " << PORT << "...\n";
 
     // 5. Vòng lặp chấp nhận kết nối
     while (true) {
         if ((newSocket = accept(serverSocket, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
-        perror("Accept failed");
-        continue;
-    }
+            perror("Accept failed");
+            continue;
+        }
 
-        // Cài đặt Timeout 5 phút (300 giây) cho socket này
+        // Cài đặt Timeout 5 phút
         struct timeval tv;
         tv.tv_sec = 300; 
         tv.tv_usec = 0;
@@ -74,8 +94,7 @@ int main() {
 
         cout << "Ket noi moi! Socket ID: " << newSocket << endl;
 
-        // 6. Tạo luồng mới cho Client (Detach để chạy ngầm)
-        // Truyền hàm connectionHandler và tham số newSocket vào thread
+        // 6. Tạo luồng mới
         thread t(connectionHandler, newSocket);
         t.detach();
     }
